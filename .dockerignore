@@ -1,0 +1,14 @@
+.git
+**/bin
+**/obj
+**/node_modules
+.env*
+secrets
+artifacts
+TestResults
+data
+data.*
+*.pem
+*.db*
+README.md
+tests

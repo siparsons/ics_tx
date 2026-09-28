@@ -1,0 +1,22 @@
+name: verify
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: browser/package-lock.json
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: npm --prefix browser ci
+      - run: npm --prefix browser test
+      - run: npm --prefix browser run build:bookmarklet
+      - run: dotnet test CalendarBridge.sln --configuration Release
+      - run: docker build -t calendar-bridge:test .

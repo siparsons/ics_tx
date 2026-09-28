@@ -1,0 +1,14 @@
+{
+  "name": "calendar-bridge-browser",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:bookmarklet": "node build-bookmarklet.mjs",
+    "build": "node build-bookmarklet.mjs",
+    "test": "node --test test"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "linkedom": "0.18.13"
+  }
+}
