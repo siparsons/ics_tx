@@ -79,12 +79,17 @@ test("Freshness uses the oldest of both relevant calendars and omits incomplete 
   assert.deepEqual(captureFreshness(clash(),calendars,new Date("2026-09-29T09:26:00Z")),{label:"captured 30 mins ago",stale:true});
   assert.deepEqual(captureFreshness(clash(),calendars,new Date("2026-09-29T09:56:00Z")),{label:"captured 1 hour ago",stale:true});
 });
-test("Cross-midnight events retain full date/time ranges and Tomorrow is local",()=>{
+test("Cross-midnight events retain full date/time ranges and Tomorrow is local",async()=>{
   const item=clash();item.overlapStart="2026-09-29T22:45:00Z";item.overlapEnd="2026-09-29T23:15:00Z";
   item.first.start="2026-09-29T22:00:00Z";item.first.end="2026-09-30T00:00:00Z";
   assert.equal(overlapLabel(item,now),"Today · 23:45 – Tomorrow · 00:15");
   assert.equal(appointmentTime(item.first,item,now),"Today 23:00\n– Tomorrow 01:00");
   assert.equal(dateLabel(new Date("2026-09-29T23:00:00Z"),now),"Tomorrow");
+  const h=setup({clashes:[item],calendars});await h.widget.refresh();
+  assert.equal(h.node("clash-panel").classList.contains("spans-dates"),true);
+  assert.equal(h.node("first-time").textContent,"Today 23:00\n\u2013 Tomorrow 01:00");
+  h.setReport({clashes:[clash()],calendars});await h.widget.refresh();
+  assert.equal(h.node("clash-panel").classList.contains("spans-dates"),false);
 });
 test("Ended clashes disappear between refreshes",async()=>{
   const h=setup({clashes:[clash()],calendars});await h.widget.refresh();

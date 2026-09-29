@@ -80,6 +80,7 @@ export function createClashWidget({ document: doc, location, fetch: fetchData = 
       node(side + "-title").textContent = clash[side].displayTitle;
       node(side + "-time").textContent = appointmentTime(clash[side], clash, now());
     }
+    panel.classList.toggle("spans-dates", ["first", "second"].some(side => node(side + "-time").textContent.includes("\n")));
     const freshness = captureFreshness(clash, calendars, now());
     node("freshness").hidden = !freshness;
     node("freshness").textContent = freshness?.label || "";
