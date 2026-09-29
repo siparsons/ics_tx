@@ -52,10 +52,13 @@ test("Three-line tooltip exposes location only when confirmed by ARIA; commas in
   assert.equal(parseCandidate(meta).location, "Room 102");
   assert.equal(parseCandidate({ ...meta, title: meta.title.replace("Room 102", "Private notes") }).location, "");
 });
-test("Conflicting tooltip subject or times fail closed", () => {
-  assert.throws(() => parseCandidate({ ...workshop, title: workshop.title.replace("17:00", "18:00") }), /times disagree/);
-  assert.throws(() => parseCandidate({ ...workshop, title: workshop.title.replace("#5", "#6") }), /subjects disagree/);
+test("Tooltip subject differences and stale tooltip times do not reject readable ARIA times", () => {
+  const renamed = parseCandidate({ ...workshop, title: "Updated subject\n15:30 to 17:00" });
+  assert.equal(renamed.title, "Updated subject");
+  const stale = parseCandidate({ ...workshop, title: workshop.title.replace("17:00", "18:00") });
+  assert.equal(stale.end, "2026-09-17T16:00:00.000Z");
 });
+
 test("Monday-first month includes the previous and next month's visible days", () => {
   assert.deepEqual(getVisibleDateRange(month("2026-08-31T00:00:00+01:00", 35)), {
     windowStart: "2026-08-30T23:00:00.000Z", windowEnd: "2026-10-04T23:00:00.000Z"
@@ -101,4 +104,46 @@ test("Review displays local times and isolated subjects, with raw UTC JSON colla
     assert.equal(root.querySelector("details").hasAttribute("open"), false);
     assert.match(root.querySelector("textarea").value, /14:30:00.000Z/);
   } finally { delete globalThis.document; }
+});
+
+test("Outlook Exam icon decoration preserves the tooltip subject and correct BST times", () => {
+  const meta = { title: "test\n10:00 to 10:30",
+    aria: "Exam icon, test, 10:00 to 10:30, Tuesday, September 29, 2026, Busy", data: {} };
+  assert.deepEqual(parseCandidate(meta), { title: "test", start: "2026-09-29T09:00:00.000Z",
+    end: "2026-09-29T09:30:00.000Z", location: "", allDay: false });
+  assert.equal(parseCandidate({ ...meta, title: "Different subject\n10:00 to 10:30" }).title, "Different subject");
+  assert.equal(parseCandidate({ ...meta, aria: meta.aria.replace("Exam icon,", "Extra text,") }).title, "test");
+  const literal = { ...meta, title: "Exam icon, test\n10:00 to 10:30" };
+  assert.equal(parseCandidate(literal).title, "Exam icon, test");
+});
+
+
+test("All-day cards use displayed single-day or multi-day dates with an exclusive ICS end", () => {
+  for (const [date, end] of [
+    ["Tuesday, September 29, 2026", "2026-09-29T23:00:00.000Z"],
+    ["Tuesday, September 29, 2026 to Thursday, October 01, 2026", "2026-10-01T23:00:00.000Z"]
+  ]) {
+    const event = parseCandidate({ title: "Holiday\nAll day", aria: "Holiday icon, Holiday, All day, " + date, data: {} });
+    assert.equal(event.title, "Holiday"); assert.equal(event.allDay, true);
+    assert.equal(event.start, "2026-09-28T23:00:00.000Z"); assert.equal(event.end, end);
+  }
+});
+
+test("Month cell supplies dates for timed tooltips and all-day cards with no ARIA dates", () => {
+  const doc = month("2026-09-29T00:00:00+01:00", 1);
+  const card = doc.createElement("div"); card.setAttribute("role", "button");
+  card.setAttribute("title", "Test\n10:00 to 10:30"); doc.body.firstElementChild.append(card);
+  assert.equal(extractVisibleEvents(doc)[0].start, "2026-09-29T09:00:00.000Z");
+  card.setAttribute("title", "Holiday\nAll day");
+  assert.equal(extractVisibleEvents(doc)[0].allDay, true);
+});
+
+test("Unusual and blank subjects remain represented without changing their known times", () => {
+  for (const subject of ["Exam icon, literal title", "29 September 2026", "Body: planning", "", "x".repeat(600)]) {
+    const event = parseCandidate({ title: "", aria: "", data: {
+      "data-start": "2026-09-29T10:00:00+01:00", "data-end": "2026-09-29T10:30:00+01:00", "data-subject": subject
+    } });
+    assert.equal(event.title, subject.slice(0, 500) || "Untitled event");
+    assert.equal(event.start, "2026-09-29T09:00:00.000Z");
+  }
 });

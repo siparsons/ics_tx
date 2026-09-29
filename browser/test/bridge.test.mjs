@@ -75,7 +75,7 @@ test("Ambiguous, unsupported and rollover timestamps fail closed", () => {
   assert.throws(() => strictTimestamp("2026-09-29T10:00:00"));
   assert.throws(() => parseCandidate({ aria: "Planning, 10:00 to 11:00", data: {} }));
   assert.throws(() => parseCandidate({ aria: "Planning, 10:00 to 11:00 AM, 29 September 2026", data: {} }));
-  assert.throws(() => parseCandidate({ ...meta, data: { ...meta.data, "data-subject": "" } }));
+  assert.equal(parseCandidate({ ...meta, data: { ...meta.data, "data-subject": "" } }).title, "Untitled event");
 });
 function dom(html) {
   const { document, window } = parseHTML("<html><body>" + html + "</body></html>");

@@ -21,7 +21,9 @@ export function enumerateCandidates(root = document) {
     const label = (el.getAttribute("aria-label") || "") + " " + (el.getAttribute("title") || "");
     return el.hasAttribute("data-start") || el.hasAttribute("data-start-time") ||
       el.hasAttribute("data-event-id") || el.getAttribute("data-app-section") === "CalendarEvent" ||
-      /(?:\d{1,2}:\d{2}.*(?:to|[-–]).*\d{1,2}:\d{2}|all day.*\d{4})/i.test(label);
+      /\d{1,2}:\d{2}.*(?:to|[-–]).*\d{1,2}:\d{2}/i.test(label) ||
+      (/\ball[- ]day\b/i.test(label) && (/\d{4}/.test(label) ||
+        ((el.getAttribute("title") || "").includes("\n") && el.closest('[data-date], [id^="monthDayCell_"]'))));
   }).filter((el, _, all) => !all.some(parent => parent !== el && parent.contains(el)));
 }
 export function candidateMetadata(el) {
@@ -29,7 +31,8 @@ export function candidateMetadata(el) {
     aria: el.getAttribute("aria-label") || "", title: el.getAttribute("title") || "",
     text: (el.innerText || "").slice(0, 2000), role: el.getAttribute("role") || "",
     data: Object.fromEntries(DATA.filter(name => el.hasAttribute(name)).map(name => [name, el.getAttribute(name)])),
-    dateContext: el.closest("[data-date]")?.getAttribute("data-date") || ""
+    dateContext: el.closest("[data-date]")?.getAttribute("data-date") ||
+      /^monthDayCell_(\d{4}-\d{2}-\d{2})T/.exec(el.closest('[id^="monthDayCell_"]')?.id || "")?.[1] || ""
   };
 }
 export function diagnostics(root = document) {
@@ -79,61 +82,60 @@ function clock(value) {
   return [m[3] ? (+m[1] % 12) + (/PM/i.test(m[3]) ? 12 : 0) : +m[1], +m[2]];
 }
 
-// Parsing is deliberately independent of DOM enumeration. Add tenant fixtures before adding formats.
+// Read human-readable calendar fields; presentation differences must not reject an event.
 export function parseCandidate(meta) {
   const data = meta.data || {};
   let start = data["data-start"] || data["data-start-time"];
   let end = data["data-end"] || data["data-end-time"];
-  const label = meta.aria || meta.title;
-  const allDay = data["data-all-day"] === "true" || /\ball day\b/i.test(label);
-  let title = data["data-subject"] || data["data-title"];
+  const label = meta.aria || meta.title || "";
+  const allDay = data["data-all-day"] === "true" || /\ball[- ]day\b/i.test(label);
+  const tooltip = (meta.title || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  // A multi-line tooltip has the actual subject on its first line, regardless of icon/status text in ARIA.
+  let title = data["data-subject"] || data["data-title"] || (tooltip.length > 1 ? tooltip[0] : "");
   let location = data["data-location"] || "";
+  let subjectEnd;
   if (!start || !end) {
-    const matches = [...label.matchAll(new RegExp(TIME_RANGE.source, "gi"))];
-    const dated = matches.filter(m => dateParts(label.slice(m.index + m[0].length)));
-    const timeMatch = dated.length === 1 ? dated[0] : matches.length === 1 ? matches[0] : null;
-    if (!timeMatch) throw new Error("Appointment has no unambiguous time range.");
-    const parts = dateParts(meta.dateContext || "") || dateParts(label.slice(timeMatch.index + timeMatch[0].length));
-    if (!parts) throw new Error("Appointment has no unambiguous date with a year.");
-    if (allDay) throw new Error("All-day appointments need explicit start and exclusive end metadata.");
-    // AM/PM must be explicit on both endpoints or absent on both.
-    if (/\b(?:AM|PM)\b/i.test(timeMatch[1]) !== /\b(?:AM|PM)\b/i.test(timeMatch[2]))
-      throw new Error("Ambiguous AM/PM time range.");
-    start = localDate(parts, ...clock(timeMatch[1])).toISOString();
-    end = localDate(parts, ...clock(timeMatch[2])).toISOString();
-    // The supported accessibility grammar has the subject first, before the time/date.
-    const tooltip = (meta.title || "").split(/\r?\n/).map(line => line.trim());
-    if (tooltip.length === 2 || tooltip.length === 3) {
-      const times = new RegExp("^" + TIME_RANGE.source + "$", "i").exec(tooltip.at(-1));
-      if (times) {
-        if (JSON.stringify([clock(times[1]), clock(times[2])]) !==
-            JSON.stringify([clock(timeMatch[1]), clock(timeMatch[2])]))
-          throw new Error("Tooltip and accessibility times disagree.");
-        const ariaSubject = label.slice(0, timeMatch.index).replace(/,\s*$/, "").trim();
-        if (ariaSubject !== tooltip[0] &&
-            ariaSubject.replace(/^Meeting icon,\s*/i, "") !== tooltip[0])
-          throw new Error("Tooltip and accessibility subjects disagree.");
-        title ||= tooltip[0];
-        // Supported three-line tooltip: subject, location, time. Require the same
-        // location in ARIA before the organizer, rather than copying arbitrary lines.
-        if (tooltip.length === 3 && label.includes(", " + tooltip[1] + ", By "))
-          location ||= tooltip[1];
+    if (allDay) {
+      const marker = /\ball[- ]day\b/i.exec(label);
+      subjectEnd = marker?.index;
+      const dateText = marker ? label.slice(marker.index + marker[0].length) : label;
+      const dateTokens = [...dateText.matchAll(/\b(?:\d{4}-\d{2}-\d{2}|\d{1,2} [A-Za-z]+ \d{4}|[A-Za-z]+ \d{1,2},? \d{4})\b/g)]
+        .map(match => dateParts(match[0])).filter(Boolean);
+      const first = dateTokens[0] || dateParts(meta.dateContext || "");
+      if (!first || dateTokens.length > 2) throw new Error("All-day appointment has no clear date range.");
+      const last = dateTokens.at(-1) || first;
+      const firstDate = localDate(first), lastDate = localDate(last);
+      if (+lastDate < +firstDate) throw new Error("All-day appointment ends before it starts.");
+      lastDate.setDate(lastDate.getDate() + 1); // Displayed all-day dates are inclusive; ICS end is exclusive.
+      start = firstDate.toISOString(); end = lastDate.toISOString();
+    } else {
+      let timeLabel = label;
+      let matches = [...timeLabel.matchAll(new RegExp(TIME_RANGE.source, "gi"))];
+      const dated = matches.filter(m => dateParts(timeLabel.slice(m.index + m[0].length)));
+      let timeMatch = dated.length === 1 ? dated[0] : matches.length === 1 ? matches[0] : null;
+      if (!timeMatch && tooltip.length > 1) {
+        timeLabel = tooltip.at(-1);
+        timeMatch = new RegExp("^" + TIME_RANGE.source + "$", "i").exec(timeLabel);
       }
+      if (!timeMatch) throw new Error("Appointment has no readable time range.");
+      const parts = dateParts(timeLabel.slice(timeMatch.index + timeMatch[0].length)) || dateParts(meta.dateContext || "");
+      if (!parts) throw new Error("Appointment has no readable date with a year.");
+      if (/\b(?:AM|PM)\b/i.test(timeMatch[1]) !== /\b(?:AM|PM)\b/i.test(timeMatch[2]))
+        throw new Error("Ambiguous AM/PM time range.");
+      start = localDate(parts, ...clock(timeMatch[1])).toISOString();
+      end = localDate(parts, ...clock(timeMatch[2])).toISOString();
+      if (timeLabel === label) subjectEnd = timeMatch.index;
     }
-    title ||= label.slice(0, timeMatch.index).replace(/,\s*$/, "").trim().replace(/^Meeting icon,\s*/i, "");
-    if (dateParts(title) || /(?:organizer|attendees|body):/i.test(title))
-      throw new Error("Unsupported subject format.");
-    const locationMatch = /(?:^|,\s*)Location:\s*([^,]*)/i.exec(label);
-    location ||= locationMatch?.[1] || "";
   }
-  // Never derive a title from entire innerText or copy other metadata into the upload.
-  if (!title) throw new Error("Appointment has no isolated subject.");
-  start = strictTimestamp(start);
-  end = strictTimestamp(end);
-  title = safeDisplay(title);
-  location = safeDisplay(location);
-  if (!title || title.length > 500 || location.length > 500 || Date.parse(end) <= Date.parse(start))
-    throw new Error("Invalid appointment fields or duration.");
+  if (!title && subjectEnd !== undefined)
+    title = label.slice(0, subjectEnd).replace(/,\s*$/, "").trim().replace(/^[^,\r\n]{1,80} icon,\s*/i, "");
+  // Preserve an event even if Outlook exposes no usable subject (for example a blank/private entry).
+  title = safeDisplay(title || "").slice(0, 500) || "Untitled event";
+  if (tooltip.length === 3 && label.includes(", " + tooltip[1] + ", By ")) location ||= tooltip[1];
+  location ||= /(?:^|,\s*)Location:\s*([^,]*)/i.exec(label)?.[1] || "";
+  location = safeDisplay(location).slice(0, 500);
+  start = strictTimestamp(start); end = strictTimestamp(end);
+  if (Date.parse(end) <= Date.parse(start)) throw new Error("Appointment ends before or at its start.");
   const id = data["data-event-id"];
   return { ...(id && /^[A-Za-z0-9_\-:.]{1,256}$/.test(id) ? { sourceId: id } : {}),
     title, start, end, location, allDay };
