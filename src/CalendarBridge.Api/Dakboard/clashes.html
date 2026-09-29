@@ -5,24 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>Calendar clashes</title>
-  <link rel="stylesheet" href="/dakboard-assets/clashes.css?v=2">
-  <script type="module" src="/dakboard-assets/clashes.js?v=2"></script>
+  <link rel="stylesheet" href="/dakboard-assets/clashes.css?v=3">
+  <script type="module" src="/dakboard-assets/clashes.js?v=3"></script>
 </head>
 <body>
-  <main id="widget" aria-live="polite" aria-atomic="true">
+  <main id="widget">
+    <p id="unavailable" role="status" hidden>&#9888; Calendar clash data unavailable</p>
     <section id="clash-panel" aria-labelledby="clash-heading" hidden>
-      <header class="heading-row">
-        <h1 id="clash-heading"><span aria-hidden="true">⚠</span> Calendar clash</h1>
-        <p id="overlap-amount"></p>
-      </header>
-      <p id="overlap-time" class="overlap-time"></p>
-      <ol class="appointments" aria-label="Conflicting appointments">
-        <li class="appointment"><span id="first-title" class="event-title"></span><span id="first-time" class="event-time"></span></li>
-        <li class="appointment"><span id="second-title" class="event-title"></span><span id="second-time" class="event-time"></span></li>
-      </ol>
-      <footer><span id="freshness" hidden></span><span id="clash-count" hidden></span></footer>
+      <header class="today-heading"><h1 id="clash-heading"></h1><span id="cached-notice" hidden>Last received clashes</span></header>
+      <div id="today-grid" role="list" aria-live="polite" aria-relevant="additions removals text"></div>
     </section>
-    <p id="unavailable" role="status" hidden>⚠ Calendar clash data unavailable</p>
+    <section id="future-panel" aria-label="Future calendar clashes" hidden>
+      <h2 id="future-heading"></h2>
+      <div id="ticker-window" tabindex="0" aria-label="Future clashes; focus to pause scrolling">
+        <div id="ticker-track"></div>
+      </div>
+    </section>
   </main>
 </body>
 </html>

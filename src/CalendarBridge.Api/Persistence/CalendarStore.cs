@@ -17,6 +17,7 @@ public sealed class CalendarStore(BridgeOptions options)
             Mode = SqliteOpenMode.ReadWriteCreate, DefaultTimeout = 10, Pooling = true
         }.ToString());
         connection.Open();
+        connection.CreateFunction<string, bool>("is_cancelled", EventCancellation.IsCancelled, isDeterministic: true);
         return connection;
     }
     public void Initialize()
@@ -115,7 +116,7 @@ public sealed class CalendarStore(BridgeOptions options)
     {
         using var db = Open();
         using var cmd = db.CreateCommand();
-        cmd.CommandText = "SELECT Id,Title,Location,StartUtc,EndUtc,AllDay,StartDate,EndDate,UpdatedUtc FROM CalendarEvents WHERE CalendarName=$calendar ORDER BY StartUtc,Id";
+        cmd.CommandText = "SELECT Id,Title,Location,StartUtc,EndUtc,AllDay,StartDate,EndDate,UpdatedUtc FROM CalendarEvents WHERE CalendarName=$calendar AND is_cancelled(Title)=0 ORDER BY StartUtc,Id";
         cmd.Parameters.AddWithValue("$calendar", calendarName);
         using var reader = cmd.ExecuteReader();
         var result = new List<StoredEvent>();
@@ -141,7 +142,7 @@ public sealed class CalendarStore(BridgeOptions options)
               SELECT *, ROW_NUMBER() OVER (PARTITION BY CalendarName ORDER BY CapturedUtc DESC, ImportedUtc DESC, Id) AS Rank
               FROM Snapshots
             ), Counts AS (
-              SELECT CalendarName, COUNT(*) AS EventCount FROM CalendarEvents GROUP BY CalendarName
+              SELECT CalendarName, COUNT(*) AS EventCount FROM CalendarEvents WHERE is_cancelled(Title)=0 GROUP BY CalendarName
             )
             SELECT n.CalendarName, COALESCE(c.EventCount,0), s.CapturedUtc, s.ImportedUtc, s.WindowStartUtc, s.WindowEndUtc
             FROM Names n LEFT JOIN Latest s ON s.CalendarName=n.CalendarName AND s.Rank=1
@@ -158,7 +159,7 @@ public sealed class CalendarStore(BridgeOptions options)
         {
             cmd.CommandText = """
                 SELECT CalendarName,Id,Title,Location,StartUtc,EndUtc,AllDay,StartDate,EndDate,UpdatedUtc
-                FROM CalendarEvents WHERE StartUtc < $to AND EndUtc > $from AND ($allDay=1 OR AllDay=0)
+                FROM CalendarEvents WHERE StartUtc < $to AND EndUtc > $from AND ($allDay=1 OR AllDay=0) AND is_cancelled(Title)=0
                 ORDER BY StartUtc,CalendarName,Id LIMIT 10001
                 """;
             cmd.Parameters.AddWithValue("$from", from.Value.ToUnixTimeMilliseconds());

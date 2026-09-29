@@ -140,6 +140,26 @@ public sealed class DakboardWidgetTests
         Assert.Equal(2, report.Clashes.Count);
         Assert.All(report.Clashes, clash => { Assert.True(clash.OverlapStart >= Now); Assert.True(clash.OverlapEnd <= Now.AddDays(7)); Assert.NotEqual(clash.First.CalendarName, clash.Second.CalendarName); });
     }
+    [Fact] public async Task SameNamedCalendarConflictsNeverReachWidgetEvenWithQueryOverride()
+    {
+        using var app = new TestApp { WidgetKey = WidgetKey };
+        using var factory = app.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => {
+            services.RemoveAll<TimeProvider>(); services.AddSingleton<TimeProvider>(new FixedClock()); }));
+        using var client = Client(factory);
+        var store = factory.Services.GetRequiredService<CalendarStore>();
+        CalendarSnapshot Snapshot(string name, params CalendarEvent[] events) => new(1, SnapshotValidator.Source, Now, Now.Date, Now.Date.AddDays(1), "UTC", events.ToList(), name);
+        CalendarEvent Event(string title) => new(null, title, Now.AddHours(1), Now.AddHours(2), "", false);
+        store.Replace(Snapshot("ukhsa", Event("Internal meeting one"), Event("Internal meeting two")));
+        var internalOnly = (await client.GetFromJsonAsync<WidgetReport>(Route + "/data?includeWithinCalendar=true"))!;
+        Assert.Empty(internalOnly.Clashes);
+        store.Replace(Snapshot("ons", Event("ONS meeting")));
+        var crossCalendar = (await client.GetFromJsonAsync<WidgetReport>(Route + "/data?includeWithinCalendar=true"))!;
+        Assert.Equal(2, crossCalendar.Clashes.Count);
+        Assert.All(crossCalendar.Clashes, clash => {
+            Assert.Equal("ons", clash.First.CalendarName);
+            Assert.Equal("ukhsa", clash.Second.CalendarName);
+        });
+    }
     [Fact] public async Task QueryFailureIsNotAnEmptySuccessfulReport()
     {
         using var app = new TestApp { WidgetKey = WidgetKey }; var fake = new FakeQuery { Failure = new ClashLimitException() };

@@ -11,7 +11,7 @@ public static class ClashDetector
     public static List<CalendarClash> Find(IEnumerable<NamedStoredEvent> source, BridgeOptions options,
         DateTimeOffset from, DateTimeOffset to, bool includeAllDay = true, bool includeWithinCalendar = false)
     {
-        var events = source.Where(e => e.Event.Start < to && e.Event.End > from && (includeAllDay || !e.Event.AllDay))
+        var events = source.Where(e => !EventCancellation.IsCancelled(e.Event.Title) && e.Event.Start < to && e.Event.End > from && (includeAllDay || !e.Event.AllDay))
             .OrderBy(e => e.Event.Start).ThenBy(e => e.CalendarName, StringComparer.Ordinal).ThenBy(e => e.Event.Id, StringComparer.Ordinal).ToList();
         if (events.Count > 10000) throw new ClashLimitException();
         var active = new List<NamedStoredEvent>();

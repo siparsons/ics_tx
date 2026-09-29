@@ -270,7 +270,7 @@ Authenticated `GET /api/v1/calendars` lists tracked calendars and capture metada
 
 ## DAKboard clash widget
 
-The widget shows one upcoming timed clash across different calendars at a time, using the same query service as the clash API. Its default window is the next seven days. All-day and same-calendar clashes are excluded. It rotates multiple clashes every 11 seconds and refreshes data every 60 seconds without reloading the iframe. Appointment times use the display browser’s local timezone and a 24-hour clock.
+The widget keeps every remaining clash today visible in its own red tile, using the same query service as the clash API. Active overlaps are marked **CLASH NOW**. Clashes on later days scroll in a separate **COMING UP** strip underneath; they never replace today’s tiles. The default window is the next seven days. Only timed overlaps between **different named calendars** qualify: ONS versus UKHSA is included, UKHSA versus UKHSA is excluded, even if `includeWithinCalendar=true` is added to the widget URL. Data refreshes every 60 seconds, and local clock checks promote clashes at midnight and remove ended overlaps within 15 seconds. Dates and 24-hour times use the display browser’s local timezone, including daylight-saving changes.
 
 Set **`DAKBOARD_WIDGET_KEY`** to a new high-entropy secret of 32–256 URL-safe characters. This value is separate from `CALENDAR_FEED_TOKEN` and `CALENDAR_API_KEY` (sent by the uploader as `X-API-Key`). Generate one, for example:
 
@@ -284,7 +284,7 @@ DAKboard setup:
 
 1. Add a **Website/iFrame** block.
 2. Use `https://<service-host>/dakboard/clashes/<DAKBOARD_WIDGET_KEY>` (for this service, the host is `ics-tx.onrender.com`).
-3. Stretch the block across the lower area of the screen. Start with roughly 240–280 pixels of height; the compact layout also fits a 344 × 205 pixel iframe.
+3. Stretch the block across the lower area of the screen. Start with roughly 300–400 pixels of height for two or more today tiles and the future strip. Tiles reflow into up to three columns and scale to the space available; increase the block height when many clashes would otherwise make the text too small. Every today tile remains present: there is no paging or rotation of today’s alerts.
 4. Leave the page running. DAKboard does not need to reload it every minute because the page handles its own refresh.
 
 Routes:
@@ -292,6 +292,10 @@ Routes:
 - `GET /dakboard/clashes/{widgetKey}` — protected HTML page.
 - `GET /dakboard/clashes/{widgetKey}/data` — read-only JSON projection of the existing clash query. It returns only the fields needed by the widget, without locations or individual event IDs.
 
-No clashes means a completely transparent, empty iframe. Failed data requests show a small **⚠ Calendar clash data unavailable** warning instead of reporting zero clashes. Long titles are truncated safely, and each appointment keeps its full start/end time. The footer uses the oldest available capture time for the two relevant calendars and turns subtly amber after 30 minutes; if either capture time is unavailable, it omits the freshness label. Capture freshness does not prove that every external Outlook calendar has been fully captured.
+No clashes means a completely transparent, empty iframe. With future clashes only, just the bottom strip is shown. Failed data requests show **⚠ Calendar clash data unavailable** and retain still-relevant last-received alerts with an explicit label, instead of silently clearing them. Long tile titles use ellipsis, and each appointment keeps its full start/end time. Each tile’s footer uses the oldest capture time of its two calendars, turning subtly amber after 30 minutes; incomplete metadata or a compact tile omits the label. Capture freshness does not prove that every external Outlook calendar has been fully captured. Hover or focus pauses the future strip; reduced-motion mode stops automatic scrolling and allows manual horizontal navigation.
 
 The widget key is a read-only access secret: keep the iframe URL private and rotate the environment value to revoke an old URL. The page and data responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. They never contain the feed token or upload key. The widget uses self-hosted vanilla JavaScript/CSS, safe text rendering, and a widget-specific CSP. It sets no `X-Frame-Options` or `frame-ancestors` restriction, allowing DAKboard to embed it without changing other routes’ policies. Application request-path logging remains disabled so widget keys are not written by framework request logs.
+
+### Cancelled appointments
+
+Titles containing the whole word `cancelled` or `canceled` (case-insensitive, anywhere in the title) are excluded from ICS feeds, event counts, and clash detection before privacy redaction. The rule applies when reading existing captures, so no new Outlook sync is needed. Words such as `uncancelled` and `cancellation` are not matched. Raw captures remain stored; a later capture with the cancellation wording removed makes the appointment eligible again. DAKboard calendar blocks reflect feed removals on their next calendar refresh.
