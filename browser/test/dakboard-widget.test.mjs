@@ -66,15 +66,41 @@ test("Refresh adds and removes today's pairs without replacing remaining tiles o
   h.setReport({clashes:[],calendars});await h.widget.refresh();assert.equal(h.tiles().length,0);
   assert.equal(h.node("clash-panel").hidden,true);assert.equal(h.node("future-panel").hidden,true);
 });
-test("Future-only mode has no red today tile and safely renders the scrolling text",async()=>{
-  const f=future();f.first.displayTitle='<script>alert(1)</script>';
-  const h=setup({clashes:[f],calendars});await h.widget.refresh();
-  assert.equal(h.node("clash-panel").hidden,true);assert.equal(h.node("future-panel").hidden,false);
+test("Future-only mode prominently shows the earliest clash with its date and safely renders the remaining ticker",async()=>{
+  const f=future("a"),later=future("b");later.first.displayTitle='<script>alert(1)</script>';
+  const h=setup({clashes:[later,f],calendars});await h.widget.refresh();
+  assert.equal(h.node("clash-panel").hidden,false);assert.equal(h.node("future-panel").hidden,false);
+  assert.match(h.node("clash-heading").textContent,/NEXT CLASH/);
+  assert.deepEqual(h.tiles().map(t=>t.dataset.clashId),["a"]);
+  assert.equal(h.tiles()[0].querySelector(".clash-state").textContent,"NEXT CLASH");
+  assert.equal(h.tiles()[0].querySelector(".overlap-time").textContent,"Tomorrow \u00b7 10:30\u201311:00");
   assert.equal(h.node("future-heading").textContent,"COMING UP 1");
   assert.equal(h.node("ticker-track").querySelector("script"),null);
-  assert.ok(h.node("ticker-track").textContent.includes(f.first.displayTitle));
+  assert.ok(h.node("ticker-track").textContent.includes(later.first.displayTitle));
   assert.equal(h.node("ticker-track").children[1].getAttribute("aria-hidden"),"true");
 });
+
+test("Ending today's last clash promotes the next clash without fetching",async()=>{
+  const h=setup({clashes:[clash(),future()],calendars});await h.widget.refresh();
+  h.setNow(new Date("2026-09-29T10:00:00Z"));h.widget.tick();
+  assert.deepEqual(h.tiles().map(t=>t.dataset.clashId),["f"]);
+  assert.equal(h.tiles()[0].querySelector(".clash-state").textContent,"NEXT CLASH");
+  assert.equal(h.node("future-panel").hidden,true);assert.equal(h.calls.length,1);
+});
+
+test("Removing the next clash promotes the following date; failed refresh retains that tile with a warning",async()=>{
+  const later=clash("later","2026-10-02T09:00:00Z","2026-10-02T10:00:00Z");
+  const h=setup({clashes:[later,future()],calendars});await h.widget.refresh();
+  assert.equal(h.tiles()[0].dataset.clashId,"f");
+  h.setReport({clashes:[later],calendars});await h.widget.refresh();
+  const tile=h.tiles()[0];assert.equal(tile.dataset.clashId,"later");
+  assert.equal(tile.querySelector(".overlap-time").textContent,"Fri 2 Oct \u00b7 10:00\u201311:00");
+  assert.equal(h.node("future-panel").hidden,true);
+  h.setFail(true);await h.widget.refresh();
+  assert.equal(h.tiles()[0],tile);assert.equal(h.node("cached-notice").hidden,false);
+  assert.equal(h.node("unavailable").hidden,false);
+});
+
 test("Clashes become active, then disappear at their exact end without a network request",async()=>{
   const h=setup({clashes:[clash()],calendars});await h.widget.refresh();
   assert.equal(h.tiles()[0].classList.contains("is-now"),false);
@@ -85,8 +111,12 @@ test("Clashes become active, then disappear at their exact end without a network
 });
 test("Local midnight promotes future clashes into persistent today tiles",async()=>{
   const h=setup({clashes:[future()],calendars});await h.widget.refresh();
+  const tile=h.tiles()[0];assert.equal(tile.querySelector(".clash-state").textContent,"NEXT CLASH");
   h.setNow(new Date("2026-09-29T23:00:00Z"));h.widget.tick();
-  assert.equal(h.tiles().length,1);assert.equal(h.node("future-panel").hidden,true);
+  assert.equal(h.tiles().length,1);assert.equal(h.tiles()[0],tile);
+  assert.equal(tile.querySelector(".clash-state").textContent,"CLASH TODAY");
+  assert.match(h.node("clash-heading").textContent,/1 CLASH TODAY/);
+  assert.equal(h.node("future-panel").hidden,true);
 });
 test("Day splitting includes ongoing overnight clashes and respects a 25-hour DST day",()=>{
   const overnight=clash("night","2026-09-28T22:00:00Z","2026-09-29T10:00:00Z");

@@ -146,19 +146,22 @@ export function createClashWidget({ document: doc, location, fetch: fetchData = 
   }
   function render() {
     const { today, future } = splitClashes(clashes, now());
+    const showingNext = today.length === 0;
+    const featured = showingNext ? future.slice(0, 1) : today;
     node("unavailable").hidden = !failed;
-    node("cached-notice").hidden = !failed || today.length === 0;
-    panel.hidden = today.length === 0;
-    setText(node("clash-heading"), "\u26a0 " + today.length + (today.length === 1 ? " CLASH TODAY" : " CLASHES TODAY"));
-    const ids = new Set(today.map(c => c.id));
+    node("cached-notice").hidden = !failed || featured.length === 0;
+    panel.hidden = featured.length === 0;
+    setText(node("clash-heading"), showingNext ? "\u26a0 NEXT CLASH"
+      : "\u26a0 " + today.length + (today.length === 1 ? " CLASH TODAY" : " CLASHES TODAY"));
+    const ids = new Set(featured.map(c => c.id));
     for (const [id, refs] of tiles) if (!ids.has(id)) { refs.tile.remove(); tiles.delete(id); }
-    today.forEach((clash, index) => {
+    featured.forEach((clash, index) => {
       let refs = tiles.get(clash.id);
       if (!refs) { refs = createTile(clash.id); tiles.set(clash.id, refs); }
       if (grid.children[index] !== refs.tile) grid.insertBefore(refs.tile, grid.children[index] || null);
       const active = Date.parse(clash.overlapStart) <= +now();
       refs.tile.classList.toggle("is-now", active);
-      setText(refs.state, active ? "CLASH NOW" : "CLASH TODAY");
+      setText(refs.state, active ? "CLASH NOW" : showingNext ? "NEXT CLASH" : "CLASH TODAY");
       setText(refs.amount, number.format(clash.overlapMinutes) + " MIN OVERLAP");
       setText(refs.time, overlapLabel(clash, now()).replace(/^Today \u00b7 /, ""));
       for (const side of ["first", "second"]) {
@@ -173,7 +176,7 @@ export function createClashWidget({ document: doc, location, fetch: fetchData = 
       setText(refs.freshness, freshness?.label || "");
       refs.freshness.classList.toggle("stale", !!freshness?.stale);
     });
-    renderTicker(future);
+    renderTicker(showingNext ? future.slice(1) : future);
     layout();
   }
   async function refresh() {
