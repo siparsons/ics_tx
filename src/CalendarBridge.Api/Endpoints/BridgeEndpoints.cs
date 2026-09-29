@@ -22,7 +22,7 @@ public static class BridgeEndpoints
             context.Response.Headers.CacheControl = "public, max-age=300";
             return Results.Json(crypto.PublicKey());
         });
-        app.MapPost("/api/v1/calendar/sync", Sync).RequireRateLimiting("ingest");
+        app.MapPost("/api/v1/calendar/sync", Sync).WithMetadata(new CalendarWriteAccess()).RequireRateLimiting("ingest");
         app.MapGet("/calendar/{feedToken}.ics", (string feedToken, HttpContext context, BridgeOptions options, CalendarStore store) =>
         {
             context.Response.Headers.CacheControl = "no-store";

@@ -94,7 +94,7 @@ Rotate `CALENDAR_API_KEY` independently and update bookmarks that embed it. Rota
 | `CALENDAR_FEED_TOKEN` | Required; independently generated URL-safe 32–256 characters | Service-wide feed credential |
 | `CALENDAR_RSA_PRIVATE_KEY` | Required | Private PEM or Base64-wrapped PEM |
 | `CALENDAR_RSA_KEY_ID` | `primary` | Key version identifier |
-| `CALENDAR_NAME` | `Work Calendar` on the server | Display name for the default feed; named feeds use their bookmark name |
+| `CALENDAR_NAME` | `Work Calendar` on the server | Display name for the default feed; named feeds use their bookmark name. ICS event titles are prefixed with the upper-case calendar name, e.g. `UKHSA: appointment x`. |
 | `CALENDAR_DB_PATH` | `.local/calendar.db` locally; `/var/data/calendar.db` in Docker | Persistent SQLite path |
 | `CALENDAR_ALLOWED_ORIGINS` | Outlook office.com, office365.com and cloud.microsoft origins | Comma-separated HTTPS origins without trailing slashes |
 | `CALENDAR_MAX_PAYLOAD_BYTES` | `262144` | Maximum encrypted request bytes, including envelope overhead |
@@ -174,10 +174,12 @@ Outlook CSP may block either inline execution, external script loading, or outbo
 4. Click the private Favourite. On its first run, choose an interval in minutes and click **Save and start**. This choice is saved per destination calendar and service in this browser’s Outlook site storage; later clicks and page refreshes do not ask again. It opens or reuses a Calendar Bridge companion tab; leave that tab open and return to Outlook. Allow pop-ups for Outlook if Edge blocks it. It scans, validates the detected window, encrypts and uploads immediately, then schedules fresh captures at your chosen interval (1–10080 minutes).
 5. A small status notification shows progress, the uploaded count and the next scheduled run; success disappears after five seconds. Errors remain visible with Diagnostics and Stop timer buttons.
 
-Each upload replaces the detected window, including clearing previous events when that window is empty. Only rendered appointments are captured, so select the intended calendar and fully expand its appointments before clicking. Missing or invalid dates, incomplete month grids and parser failures stop the upload instead of guessing a window. Repeated clicks during an active upload are ignored. Clicking again after it finishes runs immediately and replaces the existing timer, so schedules do not accumulate.
+Each upload replaces the detected window, including clearing previous events when that window is empty. Only rendered appointments are captured, so select the intended calendar and fully expand its appointments before clicking. Missing or invalid dates, incomplete month grids or seven-day headers and parser failures stop the upload instead of guessing a window. Repeated clicks during an active upload are ignored. Clicking again after it finishes runs immediately and replaces the existing timer, so schedules do not accumulate.
 
 
 Deploy the rebuilt service before installing this Favourite: /bookmark/companion.html and /bookmark/companion.js must both be available. The Docker build includes them automatically.
+
+The rolling **7 days** view is supported using its seven dated header columns. On the first sync after clicking the Favourite, and on the first sync each new local day, Calendar Bridge clicks Outlook’s **Go to today** button and waits for the dated view and appointment cards to settle. It does not change which calendar is selected. Failed navigation or a loading view blocks that upload and is retried on the next scheduled run. Month view is not automatically navigated. Only rendered appointments are captured; collapsed or virtualized entries still cannot be recovered from absent markup.
 
 The timer lives only in the current Outlook page. Keep both the companion tab and the intended calendar view open; every run reads the currently rendered view afresh and uses the calendar name embedded in the Favourite. Changing the selected Outlook calendar changes the data that will be sent to that name. Closing the companion stops uploads until the Favourite reopens it. Refreshing, closing or discarding the Outlook tab removes the timer: click the Favourite again after reopening. Use one scheduled tab per destination calendar.
 
@@ -258,3 +260,7 @@ Framework request/body logging is disabled to avoid exposing feed tokens or payl
 Automated tests exercise authentication, encryption/tag/AAD/key failures, strict validation, snapshot replacement and rollback, retention, UTC/all-day ICS, escaping/folding, privacy, CORS, payload limits, rate limiting, named-calendar isolation and actual Web Crypto interoperability. Browser tests cover parsing, DOM enumeration, diagnostics selection and fail-closed upload.
 
 A real Outlook month-view sample and a live Edge/CSP check are required before asserting tenant-specific extraction compatibility. Docker/Render deployment and Yodeck screen playback must be validated in their actual environments; a passing local test suite does not constitute a live deployment.
+
+## Calendar clash API
+
+Authenticated `GET /api/v1/calendars` lists tracked calendars and capture metadata. `GET /api/v1/calendar/clashes` returns overlapping appointment pairs across them, defaulting to the next seven days. Use the feed token in the `X-Calendar-Token` header for read-only access. See [the clash API reference](docs/clashes-api.md) for parameters, response fields and a JavaScript example.

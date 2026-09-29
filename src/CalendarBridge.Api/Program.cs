@@ -16,7 +16,7 @@ builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddCors();
 builder.Services.AddOptions<CorsOptions>().Configure<BridgeOptions>((cors, settings) =>
     cors.AddDefaultPolicy(policy => policy.WithOrigins(settings.AllowedOrigins)
-        .WithMethods("GET", "POST", "OPTIONS").WithHeaders("Content-Type", "X-API-Key")));
+        .WithMethods("GET", "POST", "OPTIONS").WithHeaders("Content-Type", "X-API-Key", "X-Calendar-Token")));
 builder.Services.AddRateLimiter(limiter =>
 {
     limiter.RejectionStatusCode = 429;
@@ -60,10 +60,16 @@ app.UseRouting();
 app.UseCors();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path == "/api/v1/calendar/sync" && context.Request.Method == "POST")
+    var endpoint = context.GetEndpoint();
+    var readCalendar = endpoint?.Metadata.GetMetadata<CalendarReadAccess>() is not null;
+    if (readCalendar || endpoint?.Metadata.GetMetadata<CalendarWriteAccess>() is not null)
     {
+        context.Response.Headers.CacheControl = "no-store";
         var keys = context.Request.Headers["X-API-Key"];
-        if (keys.Count != 1 || !EnvelopeCrypto.Matches(keys[0], options.ApiKey))
+        var tokens = context.Request.Headers["X-Calendar-Token"];
+        var authorized = keys.Count == 1 && EnvelopeCrypto.Matches(keys[0], options.ApiKey);
+        if (readCalendar) authorized |= tokens.Count == 1 && EnvelopeCrypto.Matches(tokens[0], options.FeedToken);
+        if (!authorized)
         {
             context.Response.Headers.CacheControl = "no-store";
             context.Response.StatusCode = 401;
@@ -78,5 +84,6 @@ app.UseStaticFiles(new StaticFileOptions
     OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "public, max-age=60"
 });
 app.MapBridge();
+app.MapClashes();
 app.Run();
 public partial class Program;

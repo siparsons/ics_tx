@@ -127,6 +127,53 @@ public sealed class CalendarStore(BridgeOptions options)
         return result;
     }
 
+    // Both lists share a read transaction so a concurrent sync cannot mix generations.
+    public CalendarReadData ReadCalendars(DateTimeOffset? from = null, DateTimeOffset? to = null, bool includeAllDay = true)
+    {
+        using var db = Open();
+        using var tx = db.BeginTransaction(deferred: true);
+        using var cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            WITH Names AS (
+              SELECT CalendarName FROM Snapshots UNION SELECT CalendarName FROM CalendarEvents
+            ), Latest AS (
+              SELECT *, ROW_NUMBER() OVER (PARTITION BY CalendarName ORDER BY CapturedUtc DESC, ImportedUtc DESC, Id) AS Rank
+              FROM Snapshots
+            ), Counts AS (
+              SELECT CalendarName, COUNT(*) AS EventCount FROM CalendarEvents GROUP BY CalendarName
+            )
+            SELECT n.CalendarName, COALESCE(c.EventCount,0), s.CapturedUtc, s.ImportedUtc, s.WindowStartUtc, s.WindowEndUtc
+            FROM Names n LEFT JOIN Latest s ON s.CalendarName=n.CalendarName AND s.Rank=1
+            LEFT JOIN Counts c ON c.CalendarName=n.CalendarName ORDER BY n.CalendarName
+            """;
+        var calendars = new List<TrackedCalendar>();
+        using (var reader = cmd.ExecuteReader())
+        {
+            DateTimeOffset? Time(int i) => reader.IsDBNull(i) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(i));
+            while (reader.Read()) calendars.Add(new(reader.GetString(0), reader.GetInt32(1), Time(2), Time(3), Time(4), Time(5)));
+        }
+        var events = new List<NamedStoredEvent>();
+        if (from.HasValue && to.HasValue)
+        {
+            cmd.CommandText = """
+                SELECT CalendarName,Id,Title,Location,StartUtc,EndUtc,AllDay,StartDate,EndDate,UpdatedUtc
+                FROM CalendarEvents WHERE StartUtc < $to AND EndUtc > $from AND ($allDay=1 OR AllDay=0)
+                ORDER BY StartUtc,CalendarName,Id LIMIT 10001
+                """;
+            cmd.Parameters.AddWithValue("$from", from.Value.ToUnixTimeMilliseconds());
+            cmd.Parameters.AddWithValue("$to", to.Value.ToUnixTimeMilliseconds());
+            cmd.Parameters.AddWithValue("$allDay", includeAllDay ? 1 : 0);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) events.Add(new(reader.GetString(0), new(reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)), DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(5)),
+                reader.GetInt64(6) != 0, reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetString(8),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(9)))));
+        }
+        tx.Commit();
+        return new(calendars, events);
+    }
+
     public void Cleanup(DateTimeOffset now)
     {
         using var db = Open();
