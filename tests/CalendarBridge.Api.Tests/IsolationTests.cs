@@ -44,7 +44,7 @@ public sealed class IsolationTests
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/v1/calendar/sync?calendar=work-laptop", envelope)).StatusCode);
         var a = await client.GetStringAsync("/calendar/" + TestApp.Token + ".ics?calendar=work-laptop");
         var b = await client.GetStringAsync("/calendar/" + TestApp.Token + ".ics?calendar=meeting-room");
-        Assert.Contains("SUMMARY:Laptop only", a);
+        Assert.Contains("SUMMARY:WORK-LAPTOP: Laptop only", a);
         Assert.Contains("X-WR-CALNAME:work-laptop", a);
         Assert.DoesNotContain("Laptop only", b);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/calendar/" + TestApp.Token + ".ics?calendar=bad%20name")).StatusCode);
@@ -77,6 +77,6 @@ public sealed class IsolationTests
         client.DefaultRequestHeaders.Add("X-API-Key", TestApp.ApiKey);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/v1/calendar/sync?calendar=interop", envelope)).StatusCode);
         var feed = await client.GetStringAsync("/calendar/" + TestApp.Token + ".ics?calendar=interop");
-        Assert.Contains("SUMMARY:Browser crypto café", feed);
+        Assert.Contains("SUMMARY:INTEROP: Browser crypto café", feed);
     }
 }

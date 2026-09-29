@@ -227,15 +227,15 @@ public sealed class BridgeTests : IClassFixture<TestApp>
         var events = new[] { new StoredEvent("stable@bridge", "Review, plan; path\\a\nNext", "Room",
             DateTimeOffset.Parse("2026-09-29T10:00:00+01:00"), DateTimeOffset.Parse("2026-09-29T11:00:00+01:00"),
             false, null, null, Day) };
-        var ics = IcsWriter.Write(events, app.Options with { PrivacyMode = mode });
+        var ics = IcsWriter.Write(events, app.Options with { PrivacyMode = mode, CalendarName = "ukhsa" });
         Assert.StartsWith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n", ics);
         Assert.EndsWith("END:VEVENT\r\nEND:VCALENDAR\r\n", ics);
         Assert.Contains("UID:stable@bridge\r\n", ics);
         Assert.Contains("DTSTART:20260929T090000Z", ics);
         Assert.Contains("DTEND:20260929T100000Z", ics);
-        Assert.Equal(title, ics.Contains(@"SUMMARY:Review\, plan\; path\\a\nNext"));
+        Assert.Equal(title, ics.Contains(@"SUMMARY:UKHSA: Review\, plan\; path\\a\nNext"));
         Assert.Equal(location, ics.Contains("LOCATION:Room"));
-        if (!title) Assert.Contains("SUMMARY:Busy", ics);
+        if (!title) Assert.Contains("SUMMARY:UKHSA: Busy", ics);
         Assert.DoesNotContain(TestApp.ApiKey, ics);
     }
     [Fact] public void Utf8FoldingAndAllDayDates()

@@ -32,7 +32,8 @@ public static class IcsWriter
                 Line("DTSTART:" + Timestamp(e.Start));
                 Line("DTEND:" + Timestamp(e.End));
             }
-            Line("SUMMARY:" + Escape(options.PrivacyMode == "busy" ? "Busy" : e.Title));
+            var title = options.PrivacyMode == "busy" ? "Busy" : e.Title;
+            Line("SUMMARY:" + Escape(options.CalendarName.ToUpperInvariant() + ": " + title));
             if (options.PrivacyMode == "full" && e.Location.Length > 0) Line("LOCATION:" + Escape(e.Location));
             Line("END:VEVENT");
         }
