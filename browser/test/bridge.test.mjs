@@ -106,6 +106,7 @@ test("Only Outlook calendar origins may run the harvester", () => {
 });
 
 function wireCompanion(context) {
+  context.localStorage ||= { getItem: () => "15", setItem: () => {} };
   const parent = new EventTarget();
   context.addEventListener = parent.addEventListener.bind(parent);
   context.removeEventListener = parent.removeEventListener.bind(parent);
@@ -142,8 +143,17 @@ test("Built bookmarklet uploads immediately, encrypts the named calendar, and ig
       return { ok: true, status: 200, json: async () => options.method === "GET" ?
         { keyId: "primary", algorithm: "RSA-OAEP-256", jwk } : { eventCount: 1 } };
     } };
+  const savedPreferences = new Map();
+  context.localStorage = { getItem: key => savedPreferences.get(key) ?? null,
+    setItem: (key, value) => savedPreferences.set(key, value) };
   wireCompanion(context);
   runInNewContext(executable, context, { codeGeneration: { strings: false, wasm: false } });
+  const setup = doc.getElementById("calendar-bridge-overlay").shadowRoot;
+  assert.ok(setup.querySelector('[role="dialog"]'));
+  assert.equal(requests.length, 0);
+  setup.querySelector("input").value = "5";
+  [...setup.querySelectorAll("button")].find(b => b.textContent === "Save and start").click();
+  assert.equal([...savedPreferences.values()][0], "5");
   const panel = doc.getElementById("calendar-bridge-overlay").shadowRoot;
   assert.equal(panel.querySelector('[role="dialog"]'), null);
   assert.equal(panel.querySelector("input"), null);
@@ -167,7 +177,15 @@ test("Built bookmarklet uploads immediately, encrypts the named calendar, and ig
   assert.equal(decrypted.events[0].title, "Private review title");
   assert.equal(decrypted.events.length, 1);
   assert.equal(context.CalendarBridge.scheduleStatus().enabled, true);
+  assert.equal(context.CalendarBridge.scheduleStatus().intervalMinutes, 5);
   context.CalendarBridge.stopSchedule();
+  // A fresh page instance reads the persisted preference without another form.
+  delete context.CalendarBridge;
+  runInNewContext(executable, context, { codeGeneration: { strings: false, wasm: false } });
+  assert.equal(doc.getElementById("calendar-bridge-overlay").shadowRoot.querySelector("input"), null);
+  assert.equal(context.CalendarBridge.scheduleStatus().intervalMinutes, 5);
+  context.CalendarBridge.stopSchedule();
+  while (context.CalendarBridge.isRunning()) await new Promise(resolve => setTimeout(resolve, 10));
 });
 
 test("Calendar toolbar actions are not treated as appointment candidates", () => {

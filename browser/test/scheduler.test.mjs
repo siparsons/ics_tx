@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { createScheduler, nextSyncTime } from "../src/scheduler.js";
 process.env.TZ = "Europe/London";
 
-function harness(task = async () => {}) {
+function harness(task = async () => {}, options = {}) {
   let current = new Date("2026-09-29T08:00:00+01:00"), count = 0, id = 0;
   const timers = new Map(), documentTarget = new EventTarget(), wakeTarget = new EventTarget();
   const scheduler = createScheduler(async () => { count++; await task(); }, {
     now: () => current, setTimer: fn => { timers.set(++id, fn); return id; },
-    clearTimer: id => timers.delete(id), documentTarget, wakeTarget
+    clearTimer: id => timers.delete(id), documentTarget, wakeTarget, ...options
   });
   return { scheduler, timers, documentTarget, wakeTarget,
     setTime: value => { current = new Date(value); }, count: () => count };
@@ -79,4 +79,21 @@ test("Failed tasks wait for the next slot rather than retrying on each wake", as
   h.setTime("2026-09-29T09:00:00+01:00");
   await h.scheduler.check(); await h.scheduler.check();
   assert.equal(h.count(), 2); h.scheduler.stop();
+});
+test("Chosen interval runs immediately, then waits, and catches up only once after sleep", async () => {
+  const h = harness(undefined, { intervalMinutes: 5 });
+  await h.scheduler.start();
+  h.setTime("2026-09-29T08:04:59+01:00"); await h.scheduler.check();
+  assert.equal(h.count(), 1);
+  h.setTime("2026-09-29T08:05:00+01:00"); await h.scheduler.check();
+  assert.equal(h.count(), 2);
+  h.setTime("2026-09-30T08:00:00+01:00"); await h.scheduler.check(); await h.scheduler.check();
+  assert.equal(h.count(), 3);
+  assert.equal(h.scheduler.status().nextRun, "2026-09-30T07:05:00.000Z");
+  assert.equal(h.scheduler.status().intervalMinutes, 5);
+  h.scheduler.stop();
+});
+test("Invalid intervals never create a scheduler", () => {
+  for (const intervalMinutes of [0, -1, 1.5, NaN, Infinity, 10081])
+    assert.throws(() => harness(undefined, { intervalMinutes }), /whole number/);
 });

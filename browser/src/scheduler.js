@@ -16,8 +16,11 @@ export function nextSyncTime(now) {
 export function createScheduler(task, {
   now = () => new Date(), setTimer = setTimeout, clearTimer = clearTimeout,
   documentTarget = globalThis.document, wakeTarget = globalThis,
-  isBusy = () => false
+  isBusy = () => false, intervalMinutes = null
 } = {}) {
+  if (intervalMinutes !== null && (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 10080))
+    throw new Error("Choose a whole number of minutes from 1 to 10080.");
+  const nextTime = () => intervalMinutes === null ? nextSyncTime(now()) : new Date(+now() + intervalMinutes * 60000);
   let enabled = false, running = false, timer, next, lastError = null;
   function arm() {
     clearTimer(timer);
@@ -32,7 +35,7 @@ export function createScheduler(task, {
   async function check() {
     if (!enabled) return;
     if (+now() >= +next && !running && !isBusy()) {
-      next = nextSyncTime(now());
+      next = nextTime();
       await execute();
     } else arm();
   }
@@ -49,12 +52,12 @@ export function createScheduler(task, {
   async function start() {
     stop();
     enabled = true;
-    next = nextSyncTime(now());
+    next = nextTime();
     listen("addEventListener");
     arm();
     if (!running && !isBusy()) await execute();
   }
   return { start, stop, check, status: () => ({
-    enabled, lastError, nextRun: enabled ? next.toISOString() : null, hours: [...SYNC_HOURS]
+    enabled, lastError, nextRun: enabled ? next.toISOString() : null, intervalMinutes, hours: intervalMinutes === null ? [...SYNC_HOURS] : []
   }) };
 }

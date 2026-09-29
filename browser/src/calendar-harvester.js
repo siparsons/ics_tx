@@ -2,6 +2,7 @@ import { assertOutlook, diagnostics, extractCalendarEvents, getVisibleDateRange,
   goToNextPeriod, goToPreviousPeriod, strictTimestamp } from "./outlook-extractor.js";
 import { apiOrigin, uploadCalendar } from "./uploader.js";
 import { createUi } from "./ui.js";
+import { loadInterval, saveInterval, schedulePreferenceKey, validInterval } from "./schedule-preference.js";
 import { createScheduler } from "./scheduler.js";
 import { openCompanion } from "./companion-client.js";
 
@@ -15,7 +16,7 @@ function timerStatus(ui) {
   const status = scheduler?.status();
   if (!status?.enabled) return;
   const next = new Date(status.nextRun).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-  ui.text("Timer active: 09:00, 13:00 and 17:00. Next: " + next + ". Keep this calendar open.");
+  ui.text("Timer active: every " + status.intervalMinutes + " minute" + (status.intervalMinutes === 1 ? "" : "s") + ". Next: " + next + ". Keep this calendar open.");
   ui.button("Stop timer", () => { scheduler.stop(); ui.clear(); ui.text("Automatic sync stopped."); });
 }
 function showError(ui, error) {
@@ -85,8 +86,10 @@ if (!globalThis.CalendarBridge?.isRunning?.()) {
   // Do not arm a public/keyless bookmark or a non-calendar page.
   let configured = /^[A-Za-z0-9_-]{32,256}$/.test(defaults.API_KEY || "");
   try { assertOutlook(); } catch { configured = false; }
-  if (configured) {
-    // Open synchronously during the Favourite click, before encryption or any await.
+  function startWithInterval(minutes) {
+    scheduler.stop();
+    scheduler = createScheduler(() => run(), { isBusy: () => active, intervalMinutes: minutes });
+    // Called directly by the Favourite or Start button so the popup retains user activation.
     try {
       const origin = apiOrigin(defaults.API_BASE_URL);
       if (!companion?.isOpen() || companion.origin !== origin) {
@@ -96,6 +99,33 @@ if (!globalThis.CalendarBridge?.isRunning?.()) {
     } catch (error) { companionError = error; }
     if (companionError) void run();
     else void scheduler.start();
+  }
+  if (configured) {
+    try {
+      const key = schedulePreferenceKey(defaults.API_BASE_URL, defaults.CALENDAR_NAME);
+      const saved = loadInterval(globalThis.localStorage, key);
+      if (saved !== null) startWithInterval(saved);
+      else {
+        const ui = createUi();
+        ui.text("How often should calendar " + defaults.CALENDAR_NAME + " sync? Your choice is remembered in this browser for this Outlook site.");
+        const input = ui.field("Run every (minutes)", "15", "number");
+        input.min = "1"; input.max = "10080"; input.step = "1";
+        const errorText = ui.text("");
+        ui.button("Save and start", () => {
+          const minutes = Number(input.value);
+          if (!validInterval(minutes)) {
+            errorText.textContent = "Enter a whole number from 1 to 10080 minutes.";
+            return;
+          }
+          try { saveInterval(globalThis.localStorage, key, minutes); }
+          catch { errorText.textContent = "The browser could not save your choice. Allow site storage for Outlook and try again."; return; }
+          ui.close();
+          startWithInterval(minutes);
+        });
+      }
+    } catch (error) {
+      showError(createUi(), new Error("Could not read the saved sync frequency. Allow site storage for Outlook and click the Favourite again."));
+    }
   }
   else void run();
 }
