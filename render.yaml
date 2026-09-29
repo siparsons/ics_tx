@@ -19,6 +19,8 @@ services:
         generateValue: true
       - key: CALENDAR_FEED_TOKEN
         generateValue: true
+      - key: DAKBOARD_WIDGET_KEY
+        generateValue: true
       - key: CALENDAR_RSA_PRIVATE_KEY
         sync: false
       - key: CALENDAR_RSA_KEY_ID

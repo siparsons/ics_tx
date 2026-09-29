@@ -94,6 +94,7 @@ Rotate `CALENDAR_API_KEY` independently and update bookmarks that embed it. Rota
 | `CALENDAR_FEED_TOKEN` | Required; independently generated URL-safe 32–256 characters | Service-wide feed credential |
 | `CALENDAR_RSA_PRIVATE_KEY` | Required | Private PEM or Base64-wrapped PEM |
 | `CALENDAR_RSA_KEY_ID` | `primary` | Key version identifier |
+| `DAKBOARD_WIDGET_KEY` | unset (widget disabled) | Independent 32–256 character URL-safe secret for the DAKboard clash widget; must differ from the API key and feed token |
 | `CALENDAR_NAME` | `Work Calendar` on the server | Display name for the default feed; named feeds use their bookmark name. ICS event titles are prefixed with the upper-case calendar name, e.g. `UKHSA: appointment x`. |
 | `CALENDAR_DB_PATH` | `.local/calendar.db` locally; `/var/data/calendar.db` in Docker | Persistent SQLite path |
 | `CALENDAR_ALLOWED_ORIGINS` | Outlook office.com, office365.com and cloud.microsoft origins | Comma-separated HTTPS origins without trailing slashes |
@@ -266,3 +267,31 @@ A real Outlook month-view sample and a live Edge/CSP check are required before a
 ## Calendar clash API
 
 Authenticated `GET /api/v1/calendars` lists tracked calendars and capture metadata. `GET /api/v1/calendar/clashes` returns overlapping appointment pairs across them, defaulting to the next seven days. Use the feed token in the `X-Calendar-Token` header for read-only access. See [the clash API reference](docs/clashes-api.md) for parameters, response fields and a JavaScript example.
+
+## DAKboard clash widget
+
+The widget shows one upcoming timed clash across different calendars at a time, using the same query service as the clash API. Its default window is the next seven days. All-day and same-calendar clashes are excluded. It rotates multiple clashes every 11 seconds and refreshes data every 60 seconds without reloading the iframe. Appointment times use the display browser’s local timezone and a 24-hour clock.
+
+Set **`DAKBOARD_WIDGET_KEY`** to a new high-entropy secret of 32–256 URL-safe characters. This value is separate from `CALENDAR_FEED_TOKEN` and `CALENDAR_API_KEY` (sent by the uploader as `X-API-Key`). Generate one, for example:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+For an existing Render service, add `DAKBOARD_WIDGET_KEY` on its **Environment** page and apply it on the next deployment. The Blueprint uses `generateValue: true` to create an independent key automatically when provisioning/syncing the variable. Never put real keys in the repository. An absent, invalid, or reused API/feed key disables only the widget: its routes return 404 while the existing API and feeds continue working. Key comparisons reuse the constant-time hash comparison used by existing authentication.
+
+DAKboard setup:
+
+1. Add a **Website/iFrame** block.
+2. Use `https://<service-host>/dakboard/clashes/<DAKBOARD_WIDGET_KEY>` (for this service, the host is `ics-tx.onrender.com`).
+3. Stretch the block across the lower area of the screen. Start with roughly 240–280 pixels of height; the compact layout also fits a 344 × 205 pixel iframe.
+4. Leave the page running. DAKboard does not need to reload it every minute because the page handles its own refresh.
+
+Routes:
+
+- `GET /dakboard/clashes/{widgetKey}` — protected HTML page.
+- `GET /dakboard/clashes/{widgetKey}/data` — read-only JSON projection of the existing clash query. It returns only the fields needed by the widget, without locations or individual event IDs.
+
+No clashes means a completely transparent, empty iframe. Failed data requests show a small **⚠ Calendar clash data unavailable** warning instead of reporting zero clashes. Long titles are truncated safely, and each appointment keeps its full start/end time. The footer uses the oldest available capture time for the two relevant calendars and turns subtly amber after 30 minutes; if either capture time is unavailable, it omits the freshness label. Capture freshness does not prove that every external Outlook calendar has been fully captured.
+
+The widget key is a read-only access secret: keep the iframe URL private and rotate the environment value to revoke an old URL. The page and data responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. They never contain the feed token or upload key. The widget uses self-hosted vanilla JavaScript/CSS, safe text rendering, and a widget-specific CSP. It sets no `X-Frame-Options` or `frame-ancestors` restriction, allowing DAKboard to embed it without changing other routes’ policies. Application request-path logging remains disabled so widget keys are not written by framework request logs.

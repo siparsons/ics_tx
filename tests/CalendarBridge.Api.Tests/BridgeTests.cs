@@ -21,6 +21,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 {
     public const string ApiKey = "test-upload-key-012345678901234567890123456789";
     public const string Token = "test-feed-token-012345678901234567890123456789";
+    public string? WidgetKey { get; init; }
     public readonly RSA Rsa = RSA.Create(4096);
     public readonly string Db = Path.Combine(Path.GetTempPath(), "calendar-bridge-tests", Guid.NewGuid() + ".db");
     public BridgeOptions Options => new(ApiKey, Token, "Work Calendar", Db, Rsa.ExportPkcs8PrivateKeyPem(),
@@ -31,6 +32,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["CALENDAR_API_KEY"] = ApiKey, ["CALENDAR_FEED_TOKEN"] = Token,
+            ["DAKBOARD_WIDGET_KEY"] = WidgetKey,
             ["CALENDAR_RSA_PRIVATE_KEY"] = Rsa.ExportPkcs8PrivateKeyPem(),
             ["CALENDAR_DB_PATH"] = Db, ["CALENDAR_ALLOWED_ORIGINS"] = "https://outlook.office.com",
             ["CALENDAR_RSA_KEY_ID"] = "primary", ["CALENDAR_MAX_PAYLOAD_BYTES"] = "262144",

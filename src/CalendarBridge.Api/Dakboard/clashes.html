@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Calendar clashes</title>
+  <link rel="stylesheet" href="/dakboard-assets/clashes.css">
+  <script type="module" src="/dakboard-assets/clashes.js"></script>
+</head>
+<body>
+  <main id="widget" aria-live="polite" aria-atomic="true">
+    <section id="clash-panel" aria-labelledby="clash-heading" hidden>
+      <header class="heading-row">
+        <h1 id="clash-heading"><span aria-hidden="true">⚠</span> Calendar clash</h1>
+        <p id="overlap-amount"></p>
+      </header>
+      <p id="overlap-time" class="overlap-time"></p>
+      <ol class="appointments" aria-label="Conflicting appointments">
+        <li class="appointment"><span id="first-title" class="event-title"></span><span id="first-time" class="event-time"></span></li>
+        <li class="appointment"><span id="second-title" class="event-title"></span><span id="second-time" class="event-time"></span></li>
+      </ol>
+      <footer><span id="freshness" hidden></span><span id="clash-count" hidden></span></footer>
+    </section>
+    <p id="unavailable" role="status" hidden>⚠ Calendar clash data unavailable</p>
+  </main>
+</body>
+</html>
