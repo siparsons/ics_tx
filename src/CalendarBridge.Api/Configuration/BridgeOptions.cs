@@ -24,7 +24,7 @@ public sealed record BridgeOptions(
         var keyId = Get("RSA_KEY_ID", "primary");
         if (!Regex.IsMatch(keyId, "^[A-Za-z0-9_-]{1,64}$"))
             throw new InvalidOperationException("Invalid CALENDAR_RSA_KEY_ID.");
-        var origins = Get("ALLOWED_ORIGINS", "https://outlook.office.com,https://outlook.office365.com")
+        var origins = Get("ALLOWED_ORIGINS", "https://outlook.office.com,https://outlook.office365.com,https://outlook.cloud.microsoft")
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (origins.Length == 0 || origins.Any(o => !Uri.TryCreate(o, UriKind.Absolute, out var u)
             || u.Scheme != "https" || u.GetLeftPart(UriPartial.Authority) != o || u.UserInfo.Length != 0))

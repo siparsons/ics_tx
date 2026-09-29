@@ -10,7 +10,7 @@ const TIME_RANGE = /(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*(?:to|[-–])\s*(\d{1,2}:\d{2
 const MONTHS = "january february march april may june july august september october november december".split(" ");
 
 export function assertOutlook(location = globalThis.location) {
-  if (location.protocol !== "https:" || !["outlook.office.com", "outlook.office365.com"].includes(location.hostname) ||
+  if (location.protocol !== "https:" || !["outlook.office.com", "outlook.office365.com", "outlook.cloud.microsoft"].includes(location.hostname) ||
       !/\/calendar(?:\/|$)/i.test(location.pathname)) throw new Error("Open the Outlook Web calendar before running Calendar Bridge.");
 }
 function visible(el) {

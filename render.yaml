@@ -28,7 +28,7 @@ services:
       - key: CALENDAR_DB_PATH
         value: /var/data/calendar.db
       - key: CALENDAR_ALLOWED_ORIGINS
-        value: https://outlook.office.com,https://outlook.office365.com
+        value: https://outlook.office.com,https://outlook.office365.com,https://outlook.cloud.microsoft
       - key: CALENDAR_MAX_PAYLOAD_BYTES
         value: "262144"
       - key: CALENDAR_RETENTION_DAYS

@@ -7,7 +7,7 @@ import { openCompanion } from "../src/companion-client.js";
 
 const channel = "a".repeat(32), origin = "https://outlook.office.com";
 const envelope = JSON.stringify({ version: 1, keyId: "primary", wrappedKey: "abc", iv: "def", ciphertext: "ghi" });
-function harness(responseStatus = 200) {
+function harness(responseStatus = 200, origin = "https://outlook.office.com") {
   let listener;
   const calls = [], replies = [];
   const { document } = parseHTML('<html><body><p id="status"></p><p id="history-empty">No uploads yet.</p><ol id="history"></ol></body></html>');
@@ -105,5 +105,21 @@ test("History includes HTTP failures and retains only the latest 100 results", a
   assert.equal(rows.length, 100);
   assert.match(rows[0].textContent, /work-laptop: failed \(HTTP 401\)/);
   assert.equal(rows[0].className, "failed");
+  h.cleanup();
+});
+
+
+test("Companion accepts the cloud.microsoft calendar and binds replies to that exact origin", async () => {
+  const cloudOrigin = "https://outlook.cloud.microsoft";
+  const h = harness(200, cloudOrigin);
+  await h.send({ type: "calendar-bridge:hello" });
+  assert.equal(h.replies[0].data.type, "calendar-bridge:ready");
+  await h.send(upload, { origin: cloudOrigin + ".evil.test" });
+  await h.send(upload, { origin: "https://outlook.office.com" });
+  assert.equal(h.calls.length, 0);
+  await h.send(upload);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.replies.at(-1).data.status, 200);
+  assert.ok(h.replies.every(reply => reply.target === cloudOrigin));
   h.cleanup();
 });

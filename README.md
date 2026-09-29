@@ -96,7 +96,7 @@ Rotate `CALENDAR_API_KEY` independently and update bookmarks that embed it. Rota
 | `CALENDAR_RSA_KEY_ID` | `primary` | Key version identifier |
 | `CALENDAR_NAME` | `Work Calendar` on the server | Display name for the default feed; named feeds use their bookmark name |
 | `CALENDAR_DB_PATH` | `.local/calendar.db` locally; `/var/data/calendar.db` in Docker | Persistent SQLite path |
-| `CALENDAR_ALLOWED_ORIGINS` | Outlook office.com and office365.com origins | Comma-separated HTTPS origins without trailing slashes |
+| `CALENDAR_ALLOWED_ORIGINS` | Outlook office.com, office365.com and cloud.microsoft origins | Comma-separated HTTPS origins without trailing slashes |
 | `CALENDAR_MAX_PAYLOAD_BYTES` | `262144` | Maximum encrypted request bytes, including envelope overhead |
 | `CALENDAR_RETENTION_DAYS` | `90` | Remove events ending before the retention cutoff |
 | `CALENDAR_PRIVACY_MODE` | `full` | `full`, `title-only` or `busy`, applied at feed generation |

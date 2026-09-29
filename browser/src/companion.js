@@ -1,4 +1,4 @@
-const OUTLOOK_ORIGINS = ["https://outlook.office.com", "https://outlook.office365.com"];
+const OUTLOOK_ORIGINS = ["https://outlook.office.com", "https://outlook.office365.com", "https://outlook.cloud.microsoft"];
 export function installCompanion(win, doc, fetchImpl = globalThis.fetch) {
   const config = new URLSearchParams(win.location.hash.slice(1));
   const channel = config.get("channel"), outlookOrigin = config.get("origin");

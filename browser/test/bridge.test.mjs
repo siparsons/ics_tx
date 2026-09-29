@@ -94,6 +94,12 @@ test("DOM enumeration deduplicates nested cards, excludes hidden elements, and r
   assert.throws(() => extractVisibleEvents(doc), /no snapshot was uploaded/);
 });
 test("Only Outlook calendar origins may run the harvester", () => {
+  assertOutlook({ protocol: "https:", hostname: "outlook.cloud.microsoft", pathname: "/calendar/view/month" });
+  for (const location of [
+    { protocol: "https:", hostname: "outlook.cloud.microsoft.evil.test", pathname: "/calendar" },
+    { protocol: "http:", hostname: "outlook.cloud.microsoft", pathname: "/calendar" },
+    { protocol: "https:", hostname: "outlook.cloud.microsoft", pathname: "/mail" }
+  ]) assert.throws(() => assertOutlook(location));
   assertOutlook({ protocol: "https:", hostname: "outlook.office.com", pathname: "/calendar/view/week" });
   assert.throws(() => assertOutlook({ protocol: "https:", hostname: "outlook.office.com.evil.test", pathname: "/calendar" }));
   assert.throws(() => assertOutlook({ protocol: "https:", hostname: "outlook.office.com", pathname: "/mail" }));
