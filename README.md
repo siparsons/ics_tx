@@ -131,6 +131,8 @@ The Blueprint uses Render's [documented schema and disk settings](https://render
 
 ## Create the Edge Favourite
 
+For the shared ONS Favourite, open `browser/favourites/ONS.txt` in GitHub and use **Raw** to copy its entire single line. In your local copy, replace the single `PASTE_API_KEY_HERE` placeholder with your upload API key, then paste the line into the Edge Favourite's URL. This version uploads to `https://ics-tx.onrender.com` as calendar `ons` and does not prompt for the API key. It still remembers your chosen sync interval. Keep the placeholder in GitHub; only fill in the key in your own Favourite. Regenerate the template with `node browser/build-ons-favourite.mjs`.
+
 Build from the repository root, in a separate terminal so build variables do not alter server configuration:
 
 ```powershell
