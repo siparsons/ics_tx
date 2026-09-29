@@ -4,6 +4,7 @@ import { apiOrigin, uploadCalendar } from "./uploader.js";
 import { createUi } from "./ui.js";
 import { loadInterval, saveInterval, schedulePreferenceKey, validInterval } from "./schedule-preference.js";
 import { createScheduler } from "./scheduler.js";
+import { createTodayFollower } from "./follow-today.js";
 import { openCompanion } from "./companion-client.js";
 
 const scriptUrl = document.currentScript?.src ? new URL(document.currentScript.src) : null;
@@ -12,6 +13,7 @@ const defaults = { API_BASE_URL: scriptUrl?.origin || __API_BASE_URL__, API_KEY:
 let active = false;
 let scheduler;
 let companion, companionError;
+const followToday = createTodayFollower();
 function timerStatus(ui) {
   const status = scheduler?.status();
   if (!status?.enabled) return;
@@ -49,11 +51,12 @@ export async function run(overrides = {}) {
     const config = { ...defaults, ...overrides };
     if (!/^[A-Za-z0-9_-]{32,256}$/.test(config.API_KEY || ""))
       throw new Error("This Favourite has no upload key. Install the private bookmarklet-with-key.txt generated with API_KEY.");
+    await followToday();
     const events = extractCalendarEvents();
     const capturedAt = new Date().toISOString();
     const detected = getVisibleDateRange();
     if (!(config.windowStart || detected?.windowStart) || !(config.windowEnd || detected?.windowEnd))
-      throw new Error("Cannot determine the calendar window. Open a complete month view and try again.");
+      throw new Error("Cannot determine the calendar window. Open a complete month or seven-day view and try again.");
     const windowStart = strictTimestamp(config.windowStart || detected.windowStart);
     const windowEnd = strictTimestamp(config.windowEnd || detected.windowEnd);
     if (Date.parse(windowEnd) <= Date.parse(windowStart) || Date.parse(windowEnd) - Date.parse(windowStart) > 366 * 86400000)

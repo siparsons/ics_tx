@@ -177,6 +177,16 @@ export function getVisibleDateRange(root = document) {
     const count = new Set(days.map(Number)).size;
     return [28, 35, 42].includes(count) ? contiguousRange(days) : null;
   }
+  // Outlook's rolling 7-day view exposes dates on its actual header columns.
+  // Never use the sidebar date-picker selection as the capture window.
+  const columns = [...root.querySelectorAll('[data-app-section="Surface_Day"] [data-app-section^="calendar-view-header-"] [data-column-date]')].filter(visible);
+  if (columns.length) {
+    const parts = columns.map(el => dateParts(el.getAttribute("data-column-date") || ""));
+    if (parts.some(value => !value)) return null;
+    const dates = parts.map(value => localDate(value));
+    const count = new Set(dates.map(Number)).size;
+    return count === 7 ? contiguousRange(dates) : null;
+  }
   const days = [...root.querySelectorAll('[role="columnheader"][aria-label], [role="columnheader"][data-date]')]
     .filter(visible).map(el => dateParts(el.getAttribute("data-date") || el.getAttribute("aria-label") || ""))
     .filter(Boolean).map(parts => localDate(parts));
