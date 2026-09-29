@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'">
+<title>Calendar Bridge companion</title>
+<style>body{font:16px system-ui;max-width:620px;margin:60px auto;padding:24px;color:#172333;background:#f6f8fb}main{padding:30px;background:white;border-radius:16px}h1{font-size:24px}p{line-height:1.6}#status{padding:16px;background:#eef3fa;border-radius:8px}h2{font-size:19px;margin-top:28px}ol{padding:0;list-style:none}li{border-top:1px solid #e0e6ef;padding:12px 0}time{display:block;color:#536174;font-size:13px;margin-bottom:4px}.failed span{color:#9f2828}.success span{color:#186442}</style>
+<script src="/bookmark/companion.js" defer></script>
+</head>
+<body><main><h1>Calendar Bridge companion</h1>
+<p id="status" role="status">Connecting to Outlook…</p>
+<p>Keep this tab open, then return to Outlook. Your Favourite scans the visible calendar and encrypts it there. This tab receives the encrypted envelope and uploads it to Calendar Bridge.</p>
+<p>No Microsoft credentials or authentication tokens are accessed. Closing this tab stops uploads until you click the Favourite again.</p>
+<h2>Recent updates</h2>
+<p id="history-empty">No uploads yet.</p>
+<ol id="history" aria-label="Upload history" aria-live="polite" aria-relevant="additions"></ol>
+<p>The latest 100 results are shown, newest first. History stays in this tab and clears when it is refreshed or closed. It contains times, calendar names, event counts and errors; no meeting details or keys.</p>
+</main></body></html>

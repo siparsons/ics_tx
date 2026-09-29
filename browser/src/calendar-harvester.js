@@ -1,20 +1,31 @@
 import { assertOutlook, diagnostics, extractCalendarEvents, getVisibleDateRange,
   goToNextPeriod, goToPreviousPeriod, strictTimestamp } from "./outlook-extractor.js";
-import { uploadCalendar } from "./uploader.js";
+import { apiOrigin, uploadCalendar } from "./uploader.js";
 import { createUi } from "./ui.js";
+import { createScheduler } from "./scheduler.js";
+import { openCompanion } from "./companion-client.js";
 
 const scriptUrl = document.currentScript?.src ? new URL(document.currentScript.src) : null;
 const defaults = { API_BASE_URL: scriptUrl?.origin || __API_BASE_URL__, API_KEY: __API_KEY__,
   CALENDAR_NAME: scriptUrl?.searchParams.get("calendar") || __CALENDAR_NAME__ };
 let active = false;
-let activeUi;
+let scheduler;
+let companion, companionError;
+function timerStatus(ui) {
+  const status = scheduler?.status();
+  if (!status?.enabled) return;
+  const next = new Date(status.nextRun).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  ui.text("Timer active: 09:00, 13:00 and 17:00. Next: " + next + ". Keep this calendar open.");
+  ui.button("Stop timer", () => { scheduler.stop(); ui.clear(); ui.text("Automatic sync stopped."); });
+}
 function showError(ui, error) {
   ui.clear(); ui.text("Calendar sync failed");
-  ui.button("View details", () => ui.text(error.message || "The operation failed."));
+  ui.text(error.message || "The operation failed.");
   ui.button("Diagnostics", runDiagnostics);
+  timerStatus(ui);
 }
 export function runDiagnostics() {
-  const ui = createUi(); activeUi = ui;
+  const ui = createUi();
   try {
     assertOutlook();
     const values = diagnostics();
@@ -28,51 +39,63 @@ export function runDiagnostics() {
 }
 export async function run(overrides = {}) {
   if (active) return;
-  const ui = createUi(); activeUi = ui;
+  active = true;
+  const ui = createUi({ notification: true });
   try {
     assertOutlook();
     if (!globalThis.crypto?.subtle) throw new Error("Web Crypto is unavailable.");
     ui.text("Scanning calendar…");
-    const events = extractCalendarEvents();
-    const detected = getVisibleDateRange();
     const config = { ...defaults, ...overrides };
-    ui.clear();
-    ui.text("Found " + events.length + " events. Review every event and the replacement window.");
-    ui.text("Only rendered appointments are captured. Scroll and expand the view first. An incomplete capture would remove missing events in these dates.");
-    ui.showJson(events);
-    const base = ui.field("Bridge HTTPS address", config.API_BASE_URL);
-    const calendarName = ui.field("Calendar name", config.CALENDAR_NAME);
-    const apiKey = ui.field("Upload API key (kept only in memory)", config.API_KEY, "password");
-    const start = ui.field("Window start (ISO timestamp with offset)", config.windowStart || detected?.windowStart || "");
-    const end = ui.field("Window end, exclusive (ISO timestamp with offset)", config.windowEnd || detected?.windowEnd || "");
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    ui.text("Interpreted timezone: " + timezone + ". It must match Outlook for appointments without explicit offsets.");
-    const confirmed = ui.field("I checked the dates and timezone; every appointment in this window is shown above.", "", "checkbox");
-    const empty = events.length ? null : ui.field("This window is empty; remove its previously synced events.", "", "checkbox");
-    // Capture time belongs to enumeration, not to a later upload click.
+    if (!/^[A-Za-z0-9_-]{32,256}$/.test(config.API_KEY || ""))
+      throw new Error("This Favourite has no upload key. Install the private bookmarklet-with-key.txt generated with API_KEY.");
+    const events = extractCalendarEvents();
     const capturedAt = new Date().toISOString();
-    const submit = ui.button("Encrypt and sync", async () => {
-      if (active || activeUi !== ui) return;
-      try {
-        if (!confirmed.checked || (empty && !empty.checked)) throw new Error("Confirm the full snapshot before uploading.");
-        const windowStart = strictTimestamp(start.value);
-        const windowEnd = strictTimestamp(end.value);
-        if (+new Date(windowEnd) <= +new Date(windowStart) || Date.parse(windowEnd) - Date.parse(windowStart) > 366 * 86400000)
-          throw new Error("Use a valid window of at most 366 days.");
-        if (events.some(e => Date.parse(e.start) < Date.parse(windowStart) || Date.parse(e.start) >= Date.parse(windowEnd)))
-          throw new Error("The window must include the start of every captured event.");
-        active = true; submit.disabled = true;
-        ui.text("Encrypting and uploading…");
-        const result = await uploadCalendar({ version: 1, source: "outlook-web-bookmarklet",
-          capturedAt, windowStart, windowEnd, timezone, events },
-        { ...config, API_BASE_URL: base.value.trim(), API_KEY: apiKey.value.trim(), CALENDAR_NAME: calendarName.value.trim() });
-        apiKey.value = "";
-        ui.clear(); ui.text("✓ " + result.eventCount + " events synced");
-      } catch (e) { showError(ui, e); }
-      finally { active = false; }
-    });
-    ui.button("Diagnostics", runDiagnostics);
+    const detected = getVisibleDateRange();
+    if (!(config.windowStart || detected?.windowStart) || !(config.windowEnd || detected?.windowEnd))
+      throw new Error("Cannot determine the calendar window. Open a complete month view and try again.");
+    const windowStart = strictTimestamp(config.windowStart || detected.windowStart);
+    const windowEnd = strictTimestamp(config.windowEnd || detected.windowEnd);
+    if (Date.parse(windowEnd) <= Date.parse(windowStart) || Date.parse(windowEnd) - Date.parse(windowStart) > 366 * 86400000)
+      throw new Error("Use a valid calendar window of at most 366 days.");
+    if (events.some(e => Date.parse(e.start) < Date.parse(windowStart) || Date.parse(e.start) >= Date.parse(windowEnd)))
+      throw new Error("The calendar window does not include every captured event.");
+    if (companionError) throw companionError;
+    if (!companion?.isOpen() || companion.origin !== apiOrigin(config.API_BASE_URL))
+      throw new Error("Keep the Calendar Bridge companion tab open. Click the Favourite to reconnect it.");
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    ui.clear(); ui.text("Encrypting and uploading " + events.length + " events…");
+    const result = await uploadCalendar({ version: 1, source: "outlook-web-bookmarklet",
+      capturedAt, windowStart, windowEnd, timezone, events }, config, companion.fetch);
+    ui.clear(); ui.text("✓ " + result.eventCount + " events synced to " + config.CALENDAR_NAME);
+    timerStatus(ui);
+    setTimeout(() => ui.close(), 5000);
   } catch (e) { showError(ui, e); }
+  finally { active = false; }
 }
-globalThis.CalendarBridge = { run, runDiagnostics, extractCalendarEvents, getVisibleDateRange, goToNextPeriod, goToPreviousPeriod };
-run();
+
+// A second click can evaluate a new copy of the bundle while the first is uploading.
+if (!globalThis.CalendarBridge?.isRunning?.()) {
+  const previous = globalThis.CalendarBridge;
+  previous?.stopSchedule?.();
+  companion = previous?.getCompanion?.();
+  scheduler = createScheduler(() => run(), { isBusy: () => active });
+  globalThis.CalendarBridge = { run, runDiagnostics, isRunning: () => active,
+    stopSchedule: () => scheduler.stop(), scheduleStatus: () => scheduler.status(), getCompanion: () => companion,
+    extractCalendarEvents, getVisibleDateRange, goToNextPeriod, goToPreviousPeriod };
+  // Do not arm a public/keyless bookmark or a non-calendar page.
+  let configured = /^[A-Za-z0-9_-]{32,256}$/.test(defaults.API_KEY || "");
+  try { assertOutlook(); } catch { configured = false; }
+  if (configured) {
+    // Open synchronously during the Favourite click, before encryption or any await.
+    try {
+      const origin = apiOrigin(defaults.API_BASE_URL);
+      if (!companion?.isOpen() || companion.origin !== origin) {
+        companion?.dispose();
+        companion = openCompanion(origin);
+      }
+    } catch (error) { companionError = error; }
+    if (companionError) void run();
+    else void scheduler.start();
+  }
+  else void run();
+}

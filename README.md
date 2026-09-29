@@ -7,10 +7,10 @@ The bridge never signs in to Microsoft, calls Microsoft APIs, reads cookies or t
 ## Data flow
 
 1. Invoke an Edge Favourite while viewing Outlook Calendar.
-2. Review the captured appointments, timezone and full replacement window.
+2. JavaScript extracts the rendered appointments and detects the full visible date window automatically.
 3. JavaScript serializes the snapshot, generates a fresh AES-256 key and 96-bit IV, and encrypts using AES-GCM with a 128-bit tag and AAD `calendar-bridge-v1`.
 4. JavaScript wraps the AES key with the service's RSA-OAEP/SHA-256 public key.
-5. Only the encrypted envelope is POSTed over HTTPS with `X-API-Key`.
+5. Outlook passes the encrypted envelope to a companion tab on the Bridge origin using origin-checked postMessage. That tab POSTs it over HTTPS with `X-API-Key`.
 6. The API decrypts, validates and atomically replaces the named calendar's events whose **start** is within the half-open window.
 7. Yodeck retrieves an ICS feed protected by a separate token.
 
@@ -26,7 +26,7 @@ Use a different bookmark-defined name for each calendar, for example `work-lapto
 
 The same name is inside the encrypted snapshot as `calendarName`; the server rejects a mismatching query parameter. Names isolate snapshots, stale-upload checks, event IDs and feeds. No parameter selects `default`. A valid but unused name returns an empty calendar. Renaming a bookmark creates/selects another calendar; it does not migrate or delete the old one.
 
-Browser JavaScript cannot obtain the computer's OS machine name through a standard browser API. Set the name in the bookmark build or review overlay. A machine-like label is fine.
+Browser JavaScript cannot obtain the computer's OS machine name through a standard browser API. Set the name in the bookmark build. A machine-like label is fine.
 
 The API key and feed token are **service-wide**: each authorizes all calendar names. Names are selectors, not additional access controls. Use separate deployments if calendars require independent access credentials.
 
@@ -117,7 +117,7 @@ Build-only variables: `API_BASE_URL` sets the HTTPS service origin; `CALENDAR_NA
 6. Deploy. The Docker build generates public browser assets, restores .NET dependencies and publishes the API. The service listens on `PORT` and uses `/health`.
 7. Verify the HTTPS health endpoint returns only `{"status":"ok"}`, then verify the public-key endpoint.
 8. Build the Favourite locally for the assigned HTTPS hostname and chosen calendar name.
-9. Run an encrypted sample or a reviewed Outlook capture, then configure Yodeck.
+9. Run an encrypted sample or a one-click Outlook capture, then configure Yodeck.
 
 The runtime drops root privileges before launching .NET. The entrypoint prepares the mounted database directory for the app user. Keep one instance: this SQLite/disk design does not support horizontal scaling. Render's ordinary container filesystem is ephemeral; **the disk mounted at /var/data is required**. Back up SQLite using its online backup mechanism or stop writes before taking a consistent database/WAL copy.
 
@@ -136,8 +136,10 @@ Build from the repository root, in a separate terminal so build variables do not
 ```powershell
 $env:API_BASE_URL = 'https://YOUR-SERVICE.onrender.com'
 $env:CALENDAR_NAME = 'work-laptop'
+$env:API_KEY = (Get-Content -Raw secrets/calendar-api-key.txt).Trim() # Must match Render CALENDAR_API_KEY
 npm --prefix browser ci
 npm --prefix browser run build:bookmarklet
+Remove-Item Env:API_KEY
 ```
 
 On POSIX shells:
@@ -150,33 +152,50 @@ API_BASE_URL=https://YOUR-SERVICE.onrender.com CALENDAR_NAME=work-laptop npm --p
 
 Create any Edge Favourite, edit its URL, and paste the entire single line from `browser/dist/remote-loader.txt`. Do not paste it into the address bar, which can strip the `javascript:` prefix.
 
+The public remote loader contains no upload key and cannot perform unattended sync by itself. For one-click use, install the private self-contained Favourite below. Programmatic callers can supply API_KEY through CalendarBridge.run(overrides); never put the key in a URL or public script.
+
 It loads `/bookmark/calendar-harvester.js?calendar=work-laptop&v=...`. The service origin and calendar name are read from the script URL. Deployed script updates do not require replacing the Favourite. Editing the `calendar` query parameter selects a different calendar.
 
 ### Self-contained fallback
 
-Paste the entire single line from `browser/dist/bookmarklet.txt` into a Favourite's URL. It includes the same minified source and does not fetch an external script. Rebuild and replace it after source changes.
+For one-click upload, paste the entire single line from `secrets/bookmarklet-with-key.txt` into a Favourite's URL. It includes the same minified source and does not fetch an external script. The build uses Terser compression and shortened internal variable names, with URL encoding that preserves literal percent signs and fragments. It does not use eval-based packing. Minification does not hide an embedded API credential. Rebuild and replace the Favourite after source changes.
 
-The generated default uses an intentionally invalid example hostname until you configure the build. Public outputs never contain an API key; enter the upload credential into the overlay each time.
+The generated default uses an intentionally invalid example hostname until you configure the build. Public outputs never contain an API key and report a setup error when invoked without one. Use the private credential-bearing Favourite for one-click syncing.
 
 To embed a revocable upload credential into a private Favourite, set `API_KEY` in the build environment and rebuild. Only `secrets/bookmarklet-with-key.txt` contains it; this ignored file stays outside `wwwroot` and Docker build inputs. Treat browser/bookmark-sync copies as recoverable client credentials. The API key grants no administration capability and ingestion is limited to 30 requests per minute per service.
 
-Outlook CSP may block either inline execution, external script loading, or outbound `connect-src`. The standalone fallback addresses external-script blocking only. It cannot bypass a policy that blocks outbound HTTPS to this service. Network failures report an error and make no automatic retries.
+Outlook CSP may block either inline execution, external script loading, or outbound `connect-src`. The standalone Favourite avoids injecting an external script into Outlook. Outlook's connect-src policy can also block direct API requests, so the Favourite opens /bookmark/companion.html on the Bridge origin. Only that companion performs network requests, to its own origin; Outlook encrypts the calendar before passing the envelope and upload credential through postMessage. No calendar contents or credentials are placed in the companion URL. Both sides check the exact origin, source window and a random connection ID. The companion lists the latest 100 upload results with timestamps, calendar names and event counts or errors, newest first. The history is held only in that tab and clears on refresh/close; it contains no meeting details, credentials or ciphertext. Browser pop-up blocking or Cross-Origin-Opener-Policy isolation may still prevent this architecture; these produce an error, and require live tenant/browser verification. Browser security policies are never disabled. Network failures report an error and make no automatic retries.
 
 ## Capture and diagnostics
 
 1. Open an already authenticated Outlook calendar at one of the allowed hosts.
 2. Select the required view/calendar and render its appointments. Expand overflow and scroll before scanning.
-3. Invoke the Favourite. The overlay shows only isolated title, start, end, location, all-day status and an optional safe event ID.
-4. Check the detected window. If it cannot be determined, enter precise ISO timestamps with offsets. The end is exclusive.
-5. Check that Outlook's timezone matches the displayed browser timezone for labels that do not include offsets.
-6. Confirm that every appointment in the selected window appears in the review. Confirm an empty window separately before deleting its previously stored events.
-7. Click **Encrypt and sync**. Close removes the overlay. Failures offer details and diagnostics.
+3. Ensure Outlook and your browser use the same timezone.
+4. Click the private Favourite. It opens or reuses a Calendar Bridge companion tab; leave that tab open and return to Outlook. Allow pop-ups for Outlook if Edge blocks it. It scans, validates the detected window, encrypts and uploads immediately, then schedules fresh captures at 09:00, 13:00 and 17:00 each day in the browser's local timezone.
+5. A small status notification shows progress, the uploaded count and the next scheduled run; success disappears after five seconds. Errors remain visible with Diagnostics and Stop timer buttons.
+
+Each upload replaces the detected window, including clearing previous events when that window is empty. Only rendered appointments are captured, so select the intended calendar and fully expand its appointments before clicking. Missing or invalid dates, incomplete month grids and parser failures stop the upload instead of guessing a window. Repeated clicks during an active upload are ignored. Clicking again after it finishes runs immediately and replaces the existing timer, so schedules do not accumulate.
+
+
+Deploy the rebuilt service before installing this Favourite: /bookmark/companion.html and /bookmark/companion.js must both be available. The Docker build includes them automatically.
+
+The timer lives only in the current Outlook page. Keep both the companion tab and the intended calendar view open; every run reads the currently rendered view afresh and uses the calendar name embedded in the Favourite. Changing the selected Outlook calendar changes the data that will be sent to that name. Closing the companion stops uploads until the Favourite reopens it. Refreshing, closing or discarding the Outlook tab removes the timer: click the Favourite again after reopening. Use one scheduled tab per destination calendar.
+
+Background throttling and computer sleep can delay scheduled times. A one-minute check and visibility/focus/online wake events catch up with one fresh upload when execution resumes, even if several slots were missed. Failed attempts wait for the next scheduled slot; no retry loop is created. The schedule follows local wall-clock hours across daylight-saving changes.
+
+Use **Stop timer** on the notification to disable future runs (it does not cancel an upload already in progress). Advanced controls in the browser console are:
+- CalendarBridge.scheduleStatus() — enabled state and next scheduled instant.
+- CalendarBridge.stopSchedule() — stop the timer until the Favourite is clicked again.
+- CalendarBridge.run() — perform one additional sync without changing the schedule.
+
 
 Choose **Diagnostics** in the overlay, or run `window.CalendarBridge.runDiagnostics()` after loading the script. It displays visible candidate ARIA labels, titles, text, roles and an allowlist of data attributes. Copy is explicit; no diagnostics are automatically sent. Diagnostics can include personal text, so review and redact before sharing. Raw samples named `data` or `data.*` are ignored by Git and Docker.
 
-DOM enumeration and parsing are separate in `browser/src/outlook-extractor.js`. Supported synthetic fixtures cover offset-bearing start/end data attributes and strict English accessibility labels. Unknown or ambiguous dates, unsupported all-day metadata and unparsed candidates stop the whole capture. No appointments are inferred from Outlook's private state.
+DOM enumeration and parsing are separate in `browser/src/outlook-extractor.js`. Supported synthetic fixtures cover offset-bearing start/end data attributes and English Outlook month-view tooltips/accessibility labels. Two-line tooltips provide subject and times; the verified three-line variant also provides a location when corroborated by ARIA. Accessibility decorations such as Meeting icon are excluded from subjects. Organizer names and status are not uploaded. Normal use displays only upload status; diagnostics remain an explicit action. Unknown or ambiguous dates, unsupported all-day metadata and unparsed candidates stop the whole capture. No appointments are inferred from Outlook's private state.
 
-`getVisibleDateRange()`, `extractVisibleEvents()`, `goToNextPeriod()` and `goToPreviousPeriod()` are exported for future multi-period orchestration. Navigation uses unique visible accessible controls and is never invoked automatically. The first version does not fetch hidden meetings or navigate automatically. A DOM snapshot cannot prove that Outlook has rendered every appointment; review remains required.
+Month-window detection reads timestamp prefixes from visible monthDayCell_ IDs and requires a complete contiguous 28-, 35-, or 42-day grid. This includes spillover days from adjacent months and supports either Sunday- or Monday-first views. A mismatch between those offsets and the browser timezone stops capture. Unknown or partial grids stop automatic upload. The trailing calendar identifiers are not collected.
+
+`getVisibleDateRange()`, `extractVisibleEvents()`, `goToNextPeriod()` and `goToPreviousPeriod()` are exported for future multi-period orchestration. Navigation uses unique visible accessible controls and is never invoked automatically. The first version does not fetch hidden meetings or navigate automatically. A DOM snapshot cannot prove that Outlook has rendered every appointment; ensure the intended appointments are visible before invoking the Favourite.
 
 ## Encrypted sample
 
@@ -217,9 +236,10 @@ SQLite stores decrypted event fields, so the database and backups remain sensiti
 
 | Symptom | Action |
 |---|---|
-| External script is blocked | Use the self-contained Favourite. If execution itself or outbound HTTPS is blocked by Outlook CSP, the fallback cannot bypass that policy. |
+| Clicking the Favourite does nothing | Edit its URL and confirm it begins with javascript: and contains the entire generated line, rather than a file path. Replace an older loader with the current remote-loader.txt: it displays Loading immediately and reports script-assignment errors, blocked downloads and a 15-second timeout. If no overlay appears at all, inspect the browser Console for execution or policy errors. |
+| External script is blocked | Use the self-contained Favourite from bookmarklet.txt. This includes the same harvester without injecting an external script. The companion tab handles API requests on the Bridge origin. It must be deployed and kept open. Execution restrictions or browser window isolation can still prevent operation. |
 | CORS/network failure | Check the exact Outlook origin in the allowlist, the HTTPS certificate, service availability and CSP. The allowed request headers are Content-Type and X-API-Key; credentials/cookies are omitted. |
-| No appointments detected or parsing stops | Use Diagnostics. Confirm the calendar view, expand hidden appointments, and adapt parsers from redacted tenant samples. Do not confirm an empty replacement unless the calendar is actually empty. |
+| No appointments detected or parsing stops | Use Diagnostics. Confirm the calendar view, expand hidden appointments, and adapt parsers from redacted tenant samples. An empty detected window replaces its stored events, so check the intended view is fully rendered before clicking. |
 | Range unknown | Enter exact offset-bearing start and exclusive end timestamps and verify completeness. No broad range is guessed from one appointment. |
 | Public-key/encryption failure | Check the public-key endpoint and RSA private key configuration. Re-scan after rotation; no plaintext fallback exists. |
 | 401 | Use the current ingestion API key, not the feed token. |

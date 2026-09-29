@@ -6,6 +6,7 @@ const SELECTOR = [
 ].join(",");
 const DATA = ["data-start", "data-end", "data-start-time", "data-end-time",
   "data-subject", "data-title", "data-location", "data-all-day", "data-event-id", "data-date"];
+const TIME_RANGE = /(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*(?:to|[-–])\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i;
 const MONTHS = "january february march april may june july august september october november december".split(" ");
 
 export function assertOutlook(location = globalThis.location) {
@@ -88,18 +89,38 @@ export function parseCandidate(meta) {
   let title = data["data-subject"] || data["data-title"];
   let location = data["data-location"] || "";
   if (!start || !end) {
-    const parts = dateParts(meta.dateContext || "") || dateParts(label);
+    const matches = [...label.matchAll(new RegExp(TIME_RANGE.source, "gi"))];
+    const dated = matches.filter(m => dateParts(label.slice(m.index + m[0].length)));
+    const timeMatch = dated.length === 1 ? dated[0] : matches.length === 1 ? matches[0] : null;
+    if (!timeMatch) throw new Error("Appointment has no unambiguous time range.");
+    const parts = dateParts(meta.dateContext || "") || dateParts(label.slice(timeMatch.index + timeMatch[0].length));
     if (!parts) throw new Error("Appointment has no unambiguous date with a year.");
     if (allDay) throw new Error("All-day appointments need explicit start and exclusive end metadata.");
-    const timeMatch = /(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*(?:to|[-–])\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i.exec(label);
-    if (!timeMatch) throw new Error("Appointment has no supported time range.");
     // AM/PM must be explicit on both endpoints or absent on both.
     if (/\b(?:AM|PM)\b/i.test(timeMatch[1]) !== /\b(?:AM|PM)\b/i.test(timeMatch[2]))
       throw new Error("Ambiguous AM/PM time range.");
     start = localDate(parts, ...clock(timeMatch[1])).toISOString();
     end = localDate(parts, ...clock(timeMatch[2])).toISOString();
     // The supported accessibility grammar has the subject first, before the time/date.
-    title ||= label.slice(0, timeMatch.index).replace(/,\s*$/, "").trim();
+    const tooltip = (meta.title || "").split(/\r?\n/).map(line => line.trim());
+    if (tooltip.length === 2 || tooltip.length === 3) {
+      const times = new RegExp("^" + TIME_RANGE.source + "$", "i").exec(tooltip.at(-1));
+      if (times) {
+        if (JSON.stringify([clock(times[1]), clock(times[2])]) !==
+            JSON.stringify([clock(timeMatch[1]), clock(timeMatch[2])]))
+          throw new Error("Tooltip and accessibility times disagree.");
+        const ariaSubject = label.slice(0, timeMatch.index).replace(/,\s*$/, "").trim();
+        if (ariaSubject !== tooltip[0] &&
+            ariaSubject.replace(/^Meeting icon,\s*/i, "") !== tooltip[0])
+          throw new Error("Tooltip and accessibility subjects disagree.");
+        title ||= tooltip[0];
+        // Supported three-line tooltip: subject, location, time. Require the same
+        // location in ARIA before the organizer, rather than copying arbitrary lines.
+        if (tooltip.length === 3 && label.includes(", " + tooltip[1] + ", By "))
+          location ||= tooltip[1];
+      }
+    }
+    title ||= label.slice(0, timeMatch.index).replace(/,\s*$/, "").trim().replace(/^Meeting icon,\s*/i, "");
     if (dateParts(title) || /(?:organizer|attendees|body):/i.test(title))
       throw new Error("Unsupported subject format.");
     const locationMatch = /(?:^|,\s*)Location:\s*([^,]*)/i.exec(label);
@@ -140,9 +161,26 @@ export function getVisibleDateRange(root = document) {
     windowStart: strictTimestamp(ranges[0].getAttribute("data-window-start")),
     windowEnd: strictTimestamp(ranges[0].getAttribute("data-window-end"))
   };
+  // Read only the month-cell timestamp prefix, never the trailing calendar identifier.
+  const cells = [...root.querySelectorAll('[id^="monthDayCell_"]')].filter(visible);
+  if (cells.length) {
+    const dates = cells.map(el => /^monthDayCell_(\d{4}-\d{2}-\d{2}T00:00:00(?:\.000)?(?:Z|[+-]\d{2}:\d{2}))_/.exec(el.id)?.[1]);
+    if (dates.some(value => !value)) return null;
+    const days = dates.map(value => {
+      const utc = strictTimestamp(value);
+      const local = localDate(dateParts(value.slice(0, 10)));
+      if (+local !== Date.parse(utc)) throw new Error("Outlook's calendar timezone differs from this browser. Match the timezones before syncing.");
+      return local;
+    });
+    const count = new Set(days.map(Number)).size;
+    return [28, 35, 42].includes(count) ? contiguousRange(days) : null;
+  }
   const days = [...root.querySelectorAll('[role="columnheader"][aria-label], [role="columnheader"][data-date]')]
     .filter(visible).map(el => dateParts(el.getAttribute("data-date") || el.getAttribute("aria-label") || ""))
     .filter(Boolean).map(parts => localDate(parts));
+  return contiguousRange(days);
+}
+function contiguousRange(days) {
   const unique = [...new Set(days.map(Number))].sort((a, b) => a - b);
   if (!unique.length || unique.length > 42) return null;
   for (let i = 1; i < unique.length; i++) {

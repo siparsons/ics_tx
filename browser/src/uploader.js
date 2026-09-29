@@ -9,13 +9,37 @@ export function apiOrigin(base) {
 }
 async function request(url, options, fetchImpl) {
   const abort = new AbortController();
+  const phase = options.method === "GET" ? "Encryption public-key request" : "Encrypted calendar upload";
+  const origin = new URL(url).origin;
+  let blockedByPolicy = false;
+  const policyViolation = event => {
+    if (event.disposition === "report") return;
+    if (event.effectiveDirective !== "connect-src") return;
+    try { if (new URL(event.blockedURI).origin === origin) blockedByPolicy = true; } catch { }
+  };
+  const doc = globalThis.document;
+  doc?.addEventListener("securitypolicyviolation", policyViolation);
   const timeout = setTimeout(() => abort.abort(), 20000);
   try {
     return await fetchImpl(url, { ...options, signal: abort.signal, credentials: "omit",
       referrerPolicy: "no-referrer", redirect: "error", mode: "cors", cache: "no-store" });
   } catch {
-    throw new Error("Connection failed or timed out. Check Outlook CSP, CORS and service availability. No automatic retry was made.");
-  } finally { clearTimeout(timeout); }
+    if (fetchImpl.companion)
+      throw new Error(phase + " could not complete through the companion tab. Keep it open and verify " + origin +
+        "/bookmark/companion.html is deployed. If the tab is blocked or browser policy isolates it from Outlook, the connection cannot be established. Click the Favourite to reconnect.");
+    if (blockedByPolicy)
+      throw new Error(phase + " blocked by Outlook's connect-src security policy for " + origin +
+        ". A bookmarklet cannot override that policy. No automatic retry was made.");
+    if (abort.signal.aborted)
+      throw new Error(phase + " timed out after 20 seconds while contacting " + origin +
+        ". Check the connection and service availability. No automatic retry was made.");
+    throw new Error(phase + " could not connect to " + origin +
+      " from " + (globalThis.location?.origin || "this page") +
+      ". Edge's Console/Network panel can identify a CSP, CORS or network block. No automatic retry was made.");
+  } finally {
+    clearTimeout(timeout);
+    doc?.removeEventListener("securitypolicyviolation", policyViolation);
+  }
 }
 export async function uploadCalendar(payload, config, fetchImpl = globalThis.fetch, cryptoApi = globalThis.crypto) {
   const origin = apiOrigin(config.API_BASE_URL);
@@ -25,7 +49,7 @@ export async function uploadCalendar(payload, config, fetchImpl = globalThis.fet
   if (!/^[A-Za-z0-9_-]{32,256}$/.test(config.API_KEY || "")) throw new Error("Enter the calendar upload API key.");
   if (!cachedKey || cachedKey.origin !== origin || cachedKey.expires <= Date.now()) {
     const response = await request(origin + "/api/v1/crypto/public-key", { method: "GET" }, fetchImpl);
-    if (!response.ok) throw new Error("Could not retrieve the encryption public key.");
+    if (!response.ok) throw new Error("Encryption public-key request returned HTTP " + response.status + ". Check service availability.");
     const key = await response.json();
     if (key.algorithm !== "RSA-OAEP-256" || !/^[A-Za-z0-9_-]{1,64}$/.test(key.keyId || "") ||
         key.jwk?.kty !== "RSA" || key.jwk?.d) throw new Error("Invalid public encryption key.");

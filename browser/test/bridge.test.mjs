@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import { parseHTML } from "linkedom";
 import { encryptCalendarPayload } from "../src/crypto.js";
+import { installCompanion } from "../src/companion.js";
 import { uploadCalendar } from "../src/uploader.js";
 import { parseCandidate, strictTimestamp, extractVisibleEvents, getVisibleDateRange, diagnostics, assertOutlook } from "../src/outlook-extractor.js";
 
@@ -32,7 +33,7 @@ test("Uploader posts only ciphertext, never plaintext, with no cookies or redire
   const calls = [];
   const mock = async (url, options) => {
     calls.push({ url, options });
-    return { ok: true, json: async () => options.method === "GET" ? { keyId: "primary", algorithm: "RSA-OAEP-256", jwk } : { eventCount: 1 } };
+    return { ok: true, status: 200, json: async () => options.method === "GET" ? { keyId: "primary", algorithm: "RSA-OAEP-256", jwk } : { eventCount: 1 } };
   };
   await uploadCalendar(payload, { API_BASE_URL: "https://bridge.test", API_KEY: "a".repeat(40) }, mock, webcrypto);
   const post = calls.find(call => call.options.method === "POST");
@@ -47,7 +48,7 @@ test("Uploader posts only ciphertext, never plaintext, with no cookies or redire
 test("Encryption failure never falls back to a plaintext POST", async () => {
   const calls = [];
   await assert.rejects(uploadCalendar(payload, { API_BASE_URL: "https://failed.test", API_KEY: "b".repeat(40) },
-    async (url, options) => { calls.push(options.method); return { ok: true, json: async () =>
+    async (url, options) => { calls.push(options.method); return { ok: true, status: 200, json: async () =>
       ({ keyId: "primary", algorithm: "RSA-OAEP-256", jwk: { kty: "RSA", n: "bad", e: "bad" } }) }; }, webcrypto));
   assert.deepEqual(calls, ["GET"]);
 });
@@ -98,16 +99,30 @@ test("Only Outlook calendar origins may run the harvester", () => {
   assert.throws(() => assertOutlook({ protocol: "https:", hostname: "outlook.office.com", pathname: "/mail" }));
 });
 
-test("Built bookmarklet displays review UI and encrypts its named-calendar upload", async () => {
-  const { build } = await import("esbuild");
+function wireCompanion(context) {
+  const parent = new EventTarget();
+  context.addEventListener = parent.addEventListener.bind(parent);
+  context.removeEventListener = parent.removeEventListener.bind(parent);
+  context.location.origin = "https://outlook.office.com";
+  context.open = address => {
+    const child = new EventTarget();
+    const message = (target, data, origin, source) => queueMicrotask(() =>
+      target.dispatchEvent(Object.assign(new Event("message"), { data, origin, source })));
+    const opener = { postMessage: data => { message(parent, data, new URL(address).origin, popup); } };
+    const popup = { closed: false,
+      postMessage: data => { message(child, data, context.location.origin, opener); } };
+    installCompanion({ location: new URL(address), opener,
+      addEventListener: child.addEventListener.bind(child), removeEventListener: child.removeEventListener.bind(child)
+    }, dom('<p id="status"></p>'), context.fetch);
+    return popup;
+  };
+}
+test("Built bookmarklet uploads immediately, encrypts the named calendar, and ignores a duplicate click", async () => {
+  const { buildBrowserScript, bookmarkletUrl } = await import("../build-utils.mjs");
   const { runInNewContext } = await import("node:vm");
-  const { fileURLToPath } = await import("node:url");
-  const bundled = await build({ entryPoints: [fileURLToPath(new URL("../src/calendar-harvester.js", import.meta.url))],
-    bundle: true, write: false, format: "iife", define: {
-      __API_BASE_URL__: JSON.stringify("https://ui-bridge.test"),
-      __API_KEY__: JSON.stringify(""),
-      __CALENDAR_NAME__: JSON.stringify("work-laptop")
-    } });
+  const script = await buildBrowserScript({ base: "https://ui-bridge.test", calendarName: "work-laptop", key: "k".repeat(40) });
+  const favourite = new URL(bookmarkletUrl(script)).href;
+  const executable = decodeURIComponent(favourite.slice("javascript:".length));
   const doc = dom('<div data-window-start="2026-09-29T00:00:00Z" data-window-end="2026-09-30T00:00:00Z">' +
     '<div data-subject="Private review title" data-start="2026-09-29T10:00:00Z" data-end="2026-09-29T11:00:00Z"></div></div>');
   const originalShadow = doc.defaultView.HTMLElement.prototype.attachShadow;
@@ -118,17 +133,25 @@ test("Built bookmarklet displays review UI and encrypts its named-calendar uploa
     navigator: { clipboard: { writeText: async () => {} } },
     fetch: async (url, options) => {
       requests.push({ url, options });
-      return { ok: true, json: async () => options.method === "GET" ?
+      return { ok: true, status: 200, json: async () => options.method === "GET" ?
         { keyId: "primary", algorithm: "RSA-OAEP-256", jwk } : { eventCount: 1 } };
     } };
-  runInNewContext(bundled.outputFiles[0].text, context);
+  wireCompanion(context);
+  runInNewContext(executable, context, { codeGeneration: { strings: false, wasm: false } });
   const panel = doc.getElementById("calendar-bridge-overlay").shadowRoot;
-  assert.ok(panel.querySelector("section").textContent.includes("Found 1 events"));
-  const inputs = [...panel.querySelectorAll("input")];
-  inputs.find(input => input.type === "password").value = "k".repeat(40);
-  inputs.find(input => input.type === "checkbox").checked = true;
-  const upload = [...panel.querySelectorAll("button")].find(button => button.textContent === "Encrypt and sync");
-  await upload.onclick();
+  assert.equal(panel.querySelector('[role="dialog"]'), null);
+  assert.equal(panel.querySelector("input"), null);
+  runInNewContext(executable, context, { codeGeneration: { strings: false, wasm: false } });
+  await new Promise((resolve, reject) => {
+    const deadline = Date.now() + 3000;
+    function check() {
+      if (!context.CalendarBridge.isRunning()) return resolve();
+      if (Date.now() > deadline) return reject(new Error("Upload did not finish"));
+      setTimeout(check, 10);
+    }
+    check();
+  });
+  assert.equal(requests.filter(request => request.options.method === "POST").length, 1);
   assert.ok(panel.querySelector("section").textContent.includes("1 events synced"));
   const post = requests.find(request => request.options.method === "POST");
   assert.equal(post.url, "https://ui-bridge.test/api/v1/calendar/sync?calendar=work-laptop");
@@ -137,6 +160,8 @@ test("Built bookmarklet displays review UI and encrypts its named-calendar uploa
   assert.equal(decrypted.calendarName, "work-laptop");
   assert.equal(decrypted.events[0].title, "Private review title");
   assert.equal(decrypted.events.length, 1);
+  assert.equal(context.CalendarBridge.scheduleStatus().enabled, true);
+  context.CalendarBridge.stopSchedule();
 });
 
 test("Calendar toolbar actions are not treated as appointment candidates", () => {
@@ -145,4 +170,92 @@ test("Calendar toolbar actions are not treated as appointment candidates", () =>
     '<div role="gridcell" aria-label="All day"></div>');
   assert.equal(diagnostics(doc).length, 0);
   assert.equal(extractVisibleEvents(doc).length, 0);
+});
+
+test("Automatic sync rejects missing keys, unknown windows and parse failures; known empty windows sync", async () => {
+  const { buildBrowserScript } = await import("../build-utils.mjs");
+  const { runInNewContext } = await import("node:vm");
+  const script = await buildBrowserScript({ base: "https://automatic.test", calendarName: "work-laptop", key: "k".repeat(40) });
+  const publicScript = await buildBrowserScript({ base: "https://automatic.test", calendarName: "work-laptop" });
+  const known = '<div data-window-start="2026-09-29T00:00:00Z" data-window-end="2026-09-30T00:00:00Z">';
+  for (const scenario of [
+    { html: known + "</div>", code: publicScript, message: "no upload key" },
+    { html: "", code: script, message: "Cannot determine" },
+    { html: known + '<div data-event-id="unparseable"></div></div>', code: script, message: "could not be parsed" },
+    { html: known + '<div data-subject="Outside" data-start="2026-10-01T10:00:00Z" data-end="2026-10-01T11:00:00Z"></div></div>',
+      code: script, message: "does not include every" },
+    { html: known + "</div>", code: script }
+  ]) {
+    const doc = dom(scenario.html);
+    const shadow = doc.defaultView.HTMLElement.prototype.attachShadow;
+    doc.defaultView.HTMLElement.prototype.attachShadow = function () { return shadow.call(this, { mode: "open" }); };
+    const requests = []; let dismiss;
+    const context = { document: doc, location: { protocol: "https:", hostname: "outlook.office.com", pathname: "/calendar/view/month" },
+      crypto: webcrypto, URL, Intl, Date, TextEncoder, Uint8Array, btoa, clearTimeout, AbortController,
+      setTimeout: (fn, ms) => ms === 5000 ? (dismiss = fn, 0) : setTimeout(fn, ms),
+      fetch: async (url, options) => {
+        requests.push(options);
+        return { ok: true, status: 200, json: async () => options.method === "GET" ?
+          { keyId: "primary", algorithm: "RSA-OAEP-256", jwk } : { eventCount: 0 } };
+      } };
+    wireCompanion(context);
+    runInNewContext(scenario.code, context, { codeGeneration: { strings: false, wasm: false } });
+    const deadline = Date.now() + 3000;
+    while (context.CalendarBridge.isRunning() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(context.CalendarBridge.isRunning(), false);
+    context.CalendarBridge.stopSchedule();
+    const panel = doc.getElementById("calendar-bridge-overlay").shadowRoot;
+    assert.equal(panel.querySelector("input"), null);
+    if (scenario.message) {
+      assert.ok(panel.querySelector("section").textContent.includes(scenario.message));
+      assert.equal(requests.length, 0);
+    } else {
+      const posted = requests.find(request => request.method === "POST");
+      assert.deepEqual((await decrypt(JSON.parse(posted.body))).events, []);
+      assert.ok(panel.querySelector("section").textContent.includes("0 events synced"));
+      dismiss();
+      assert.equal(doc.getElementById("calendar-bridge-overlay"), null);
+    }
+  }
+});
+
+test("Network failure identifies the public-key step and sends no calendar POST", async () => {
+  const calls = [];
+  await assert.rejects(uploadCalendar(payload, { API_BASE_URL: "https://network-failure.test", API_KEY: "k".repeat(40) },
+    async (url, options) => { calls.push(options.method); throw new TypeError("Failed to fetch"); }, webcrypto),
+    /Encryption public-key request could not connect to https:\/\/network-failure.test/);
+  assert.deepEqual(calls, ["GET"]);
+});
+test("Upload network failure is distinguished from public-key retrieval", async () => {
+  await assert.rejects(uploadCalendar(payload, { API_BASE_URL: "https://post-failure.test", API_KEY: "k".repeat(40) },
+    async (url, options) => {
+      if (options.method === "POST") throw new TypeError("Failed to fetch");
+      return { ok: true, status: 200, json: async () => ({ keyId: "primary", algorithm: "RSA-OAEP-256", jwk }) };
+    }, webcrypto), /Encrypted calendar upload could not connect/);
+});
+test("Enforced connect-src violation is identified and the temporary listener is removed", async () => {
+  const doc = new EventTarget(); let listeners = 0;
+  const add = doc.addEventListener.bind(doc), remove = doc.removeEventListener.bind(doc);
+  doc.addEventListener = (...args) => { listeners++; add(...args); };
+  doc.removeEventListener = (...args) => { listeners--; remove(...args); };
+  globalThis.document = doc;
+  try {
+    await assert.rejects(uploadCalendar(payload, { API_BASE_URL: "https://csp-failure.test", API_KEY: "k".repeat(40) },
+      async () => {
+        doc.dispatchEvent(Object.assign(new Event("securitypolicyviolation"), {
+          effectiveDirective: "connect-src", blockedURI: "https://csp-failure.test/api/v1/crypto/public-key", disposition: "enforce"
+        }));
+        throw new TypeError("Failed to fetch");
+      }, webcrypto), /blocked by Outlook's connect-src security policy/);
+    assert.equal(listeners, 0);
+  } finally { delete globalThis.document; }
+});
+test("Timeout is reported explicitly without a retry", async t => {
+  t.mock.method(globalThis, "setTimeout", fn => { queueMicrotask(fn); return 0; });
+  let calls = 0;
+  await assert.rejects(uploadCalendar(payload, { API_BASE_URL: "https://timeout.test", API_KEY: "k".repeat(40) },
+    (url, { signal }) => new Promise((resolve, reject) => {
+      calls++; signal.addEventListener("abort", () => reject(new Error("Aborted")), { once: true });
+    })), /public-key request timed out after 20 seconds/);
+  assert.equal(calls, 1);
 });
