@@ -61,7 +61,7 @@ export async function run(overrides = {}) {
     const windowEnd = strictTimestamp(config.windowEnd || detected.windowEnd);
     if (Date.parse(windowEnd) <= Date.parse(windowStart) || Date.parse(windowEnd) - Date.parse(windowStart) > 366 * 86400000)
       throw new Error("Use a valid calendar window of at most 366 days.");
-    if (events.some(e => Date.parse(e.start) < Date.parse(windowStart) || Date.parse(e.start) >= Date.parse(windowEnd)))
+    if (events.some(e => Date.parse(e.end) <= Date.parse(windowStart) || Date.parse(e.start) >= Date.parse(windowEnd)))
       throw new Error("The calendar window does not include every captured event.");
     if (companionError) throw companionError;
     if (!companion?.isOpen() || companion.origin !== apiOrigin(config.API_BASE_URL))

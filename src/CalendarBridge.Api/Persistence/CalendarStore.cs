@@ -76,7 +76,7 @@ public sealed class CalendarStore(BridgeOptions options)
         cmd.Parameters.AddWithValue("$end", snapshot.WindowEnd.ToUnixTimeMilliseconds());
         cmd.Parameters.AddWithValue("$captured", snapshot.CapturedAt.ToUnixTimeMilliseconds());
         if (Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture) != 0) throw new StaleSnapshotException();
-        cmd.CommandText = "DELETE FROM CalendarEvents WHERE CalendarName=$calendar AND Source=$source AND StartUtc >= $start AND StartUtc < $end";
+        cmd.CommandText = "DELETE FROM CalendarEvents WHERE CalendarName=$calendar AND Source=$source AND EndUtc > $start AND StartUtc < $end";
         cmd.ExecuteNonQuery();
         var id = Guid.NewGuid().ToString("N");
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

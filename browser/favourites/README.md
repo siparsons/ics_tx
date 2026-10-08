@@ -1,13 +1,16 @@
-# ONS Favourite
+# Calendar Favourites
 
-Create an Edge Favourite named **ONS**. Replace its URL with the entire contents of `ONS.txt`, then click it while Outlook Calendar is open.
+Use `UKHSA.txt` for the UKHSA calendar or `ONS.txt` for ONS. On GitHub, select **Raw** and copy the complete single line. In your local copy, replace the single `PASTE_API_KEY_HERE` with your existing upload API key, then paste it into the Edge Favourite's URL.
 
-- Service: `https://ics-tx.onrender.com`
-- Destination calendar: `ons`
-- This committed Favourite contains no upload key. It asks for the existing `CALENDAR_API_KEY` on first use and remembers it in memory until the Outlook page is refreshed or closed. It does not ask for a Microsoft password.
-- The sync interval is saved separately in Outlook site storage, so page refreshes do not reset it.
-- Keep Outlook and the companion tab open. The Favourite supports the rolling seven-day view and returns to today on its first run each day.
+The committed files contain no key and do not prompt for one. Keep the placeholder in GitHub. Private ready-to-use copies belong only in the ignored `secrets/` directory.
 
-Rebuild from the repository root with `node browser/build-ons-favourite.mjs`.
+Both Favourites upload to `https://ics-tx.onrender.com`, remember the sync interval and require Outlook and the companion tab to remain open. Replace the Favourite and click it again after a code update; it replaces the old timer and reuses its companion connection. No Outlook page reload is required.
 
-A private copy with the upload key embedded can be generated locally; keep it under the ignored `secrets/` directory, never in Git.
+Appointments overlapping the visible week are included with their full dates, including annual leave starting before the first visible day. Events entirely outside the displayed window are still rejected.
+
+Rebuild from the repository root:
+
+```powershell
+node browser/build-ons-favourite.mjs ons
+node browser/build-ons-favourite.mjs ukhsa
+```

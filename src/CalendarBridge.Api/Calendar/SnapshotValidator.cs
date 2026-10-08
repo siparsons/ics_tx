@@ -26,7 +26,7 @@ public static class SnapshotValidator
         foreach (var ev in p.Events)
         {
             if (ev is null || ev.End <= ev.Start || ev.End - ev.Start > TimeSpan.FromDays(366)
-                || ev.Start < p.WindowStart || ev.Start >= p.WindowEnd || string.IsNullOrWhiteSpace(ev.Title)
+                || ev.End <= p.WindowStart || ev.Start >= p.WindowEnd || string.IsNullOrWhiteSpace(ev.Title)
                 || ev.Title.Length > 500 || (ev.Location?.Length ?? 0) > 500 || (ev.SourceId?.Length ?? 0) > 256)
                 throw new ArgumentException("Invalid event.");
             if (ev.SourceId is not null && !Regex.IsMatch(ev.SourceId, @"^[A-Za-z0-9_\-:.]{1,256}$"))

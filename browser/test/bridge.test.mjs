@@ -208,6 +208,12 @@ test("Automatic sync rejects missing keys, unknown windows and parse failures; k
     { html: known + '<div data-event-id="unparseable"></div></div>', code: script, message: "could not be parsed" },
     { html: known + '<div data-subject="Outside" data-start="2026-10-01T10:00:00Z" data-end="2026-10-01T11:00:00Z"></div></div>',
       code: script, message: "does not include every" },
+    { html: known + '<div data-subject="Ended at boundary" data-start="2026-09-28T23:00:00Z" data-end="2026-09-29T00:00:00Z"></div></div>',
+      code: script, message: "does not include every" },
+    { html: known + '<div data-subject="Spanning leave" data-all-day="true" data-start="2026-09-28T00:00:00Z" data-end="2026-10-02T00:00:00Z"></div></div>',
+      code: script, expectedStart: "2026-09-28T00:00:00.000Z", expectedEnd: "2026-10-02T00:00:00.000Z" },
+    { html: known + '<div data-subject="Overnight" data-start="2026-09-28T23:00:00Z" data-end="2026-09-29T01:00:00Z"></div></div>',
+      code: script, expectedStart: "2026-09-28T23:00:00.000Z", expectedEnd: "2026-09-29T01:00:00.000Z" },
     { html: known + "</div>", code: script }
   ]) {
     const doc = dom(scenario.html);
@@ -235,7 +241,14 @@ test("Automatic sync rejects missing keys, unknown windows and parse failures; k
       assert.equal(requests.length, 0);
     } else {
       const posted = requests.find(request => request.method === "POST");
-      assert.deepEqual((await decrypt(JSON.parse(posted.body))).events, []);
+      const snapshot = await decrypt(JSON.parse(posted.body));
+      assert.equal(snapshot.windowStart, "2026-09-29T00:00:00.000Z");
+      assert.equal(snapshot.windowEnd, "2026-09-30T00:00:00.000Z");
+      if (scenario.expectedStart) {
+        assert.equal(snapshot.events.length, 1);
+        assert.equal(snapshot.events[0].start, scenario.expectedStart);
+        assert.equal(snapshot.events[0].end, scenario.expectedEnd);
+      } else assert.deepEqual(snapshot.events, []);
       assert.ok(panel.querySelector("section").textContent.includes("0 events synced"));
       dismiss();
       assert.equal(doc.getElementById("calendar-bridge-overlay"), null);

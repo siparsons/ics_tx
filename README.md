@@ -229,7 +229,7 @@ Keep the URL private: the token grants read access. The feed contains UTC timed 
 
 ## Snapshot and validation rules
 
-Snapshots replace only events whose start is `windowStart <= start < windowEnd` in the selected calendar/source. Omitted events in that range are deleted; events outside it stay unchanged. This is why a partial capture must not be treated as a complete month. Retention is a separate startup/six-hour cleanup based on event end time.
+Snapshots replace events overlapping the visible window (`start < windowEnd` and `end > windowStart`) in the selected calendar/source. Multi-day and overnight entries keep their full original dates, even when they start before the view. Omitted overlapping events are deleted; events wholly outside the window stay unchanged. The window is never widened to include unseen days. This is why a partial capture must not be treated as a complete month. Retention is a separate startup/six-hour cleanup based on event end time.
 
 Overlapping captures older than or equal to the last capture are rejected with 409, including replays. Re-scan rather than blindly retrying a request with an uncertain result. Browser encryption is random per upload, while event UIDs are deterministic from calendar, source, normalized content and times. Renames/moves may change UIDs; replacement semantics remove the old event.
 
