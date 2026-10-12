@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="Dakboard/clashes.html" />
+    <EmbeddedResource Include="Dakboard/absences.html" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
   </ItemGroup>
 </Project>

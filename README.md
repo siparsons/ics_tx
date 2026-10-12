@@ -303,3 +303,5 @@ Titles containing the whole word `cancelled` or `canceled` (case-insensitive, an
 ### Absence entries
 
 Recognised named leave/OOO entries are excluded from the main ICS feeds and clashes, while their raw captures remain stored. The authenticated `GET /api/v1/calendar/absences?calendar=ukhsa` endpoint returns people away now, later today or tomorrow, plus expected returns within seven days when captured coverage supports them. A read-only widget-key route is also available at `/dakboard/absences/{widgetKey}/data?calendar=ukhsa`. See [the absence API reference](docs/absences-api.md) for matching rules, partial days, freshness, return-date limitations and component integration.
+
+The combined **Who’s away** visual component is available at `/dakboard/absences/{widgetKey}`. Add it as a DAKboard Website/iFrame block using your existing widget key. It labels every person with their calendar, groups today/tomorrow, shows expected returns and capture freshness, and refreshes automatically. Start around 900×450 pixels to allow space for both sections.

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Who is away</title>
+  <link rel="stylesheet" href="/dakboard-assets/absences.css?v=1">
+  <script type="module" src="/dakboard-assets/absences.js?v=1"></script>
+</head>
+<body>
+  <main id="widget">
+    <header class="heading"><h1>Who&#8217;s away</h1><span id="scope">All calendars</span></header>
+    <p id="notice" role="status">Loading absences&#8230;</p>
+    <div id="content" aria-live="polite" aria-relevant="additions removals text">
+      <section id="today-panel" aria-labelledby="today-heading" hidden>
+        <h2 id="today-heading">Today <span id="today-count"></span></h2>
+        <div class="people" id="today-list" role="list"></div>
+      </section>
+      <section id="tomorrow-panel" aria-labelledby="tomorrow-heading" hidden>
+        <h2 id="tomorrow-heading">Tomorrow <span id="tomorrow-count"></span></h2>
+        <div class="people" id="tomorrow-list" role="list"></div>
+      </section>
+      <p id="empty" hidden>No recorded absences today or tomorrow</p>
+    </div>
+    <footer><p id="unassigned" hidden></p><p id="freshness"></p></footer>
+  </main>
+</body>
+</html>

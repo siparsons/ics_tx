@@ -5,8 +5,18 @@ namespace CalendarBridge.Api.Endpoints;
 
 public static class AbsenceEndpoints
 {
+    private static readonly Lazy<string> Page = new(() =>
+    {
+        using var stream = typeof(AbsenceEndpoints).Assembly.GetManifestResourceStream("CalendarBridge.Api.Dakboard.absences.html")
+            ?? throw new InvalidOperationException("Absence widget page is missing.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    });
+
     public static void MapAbsences(this WebApplication app)
     {
+        app.MapGet("/dakboard/absences/{widgetKey}", () => Results.Content(Page.Value, "text/html; charset=utf-8"))
+            .WithMetadata(new DakboardWidgetAccess());
         app.MapGet("/api/v1/calendar/absences", Report).WithMetadata(new CalendarReadAccess());
         app.MapGet("/dakboard/absences/{widgetKey}/data", Report).WithMetadata(new DakboardWidgetAccess());
     }

@@ -1,6 +1,6 @@
 # Absence API
 
-Separates named absence entries from ordinary appointments using already captured calendars. No new Favourite or Outlook permissions are needed. This is a JSON API for a future web component, not an HTML widget.
+Separates named absence entries from ordinary appointments using already captured calendars. No new Favourite or Outlook permissions are needed. An accompanying HTML widget combines all tracked calendars for DAKboard.
 
 ## Routes and authentication
 
@@ -56,3 +56,15 @@ Recognises named OOO/O.O.O./OOF, out-of-office, annual/parental/sick/compassiona
 Meeting discussion words (planning, policy, review, approval, handover, etc.) prevent removal. “Team Away Day”, ordinary meetings, working from home and short training meetings remain in the main ICS feed. This is a conservative heuristic, not perfect semantic recognition: ambiguous subjects remain appointments. Cancelled entries are excluded as before.
 
 The same classifier filters recognized absences from every main ICS calendar and from clashes, before title privacy redaction. Raw entries remain stored for this endpoint and can be reclassified by later rule changes. DAKboard sees ICS removals at its next calendar-feed refresh; the bridge cannot push a refresh into its calendar block. A component can poll this endpoint every 60 seconds to update names and return labels independently.
+
+## DAKboard visual component
+
+Add a Website/iFrame block using `https://ics-tx.onrender.com/dakboard/absences/<DAKBOARD_WIDGET_KEY>`. Use the same private widget key as the clash component. The HTML route and its JSON route are authenticated, non-cacheable and embeddable; the page contains no upload or feed credentials.
+
+The widget always combines **all tracked calendars**. Every person has an uppercase calendar badge, so matching names in different calendars remain distinguishable. People still away or starting later today appear under Today; those first away tomorrow appear under Tomorrow. Someone away on both days appears once, with “Also away tomorrow”. Expected return labels respect partial-day end times and unknown capture coverage. Cancelled and ended absences disappear. No recorded absences produces an explicit empty message. Clear absences without a name are counted separately.
+
+Data refreshes every 60 seconds, with local 15-second checks removing ended absences and promoting tomorrow at midnight. Failure retains last received data with a visible warning. A report from the previous day is explicitly marked incomplete until a fresh report arrives. The footer lists every tracked calendar's capture age and warns about missing current coverage; the endpoint still relies on your Outlook captures.
+
+Start with a block approximately 900 pixels wide and 450 pixels high for both day sections, or about 280 pixels high for one row today. Cards wrap on narrower screens, and the page allows vertical scrolling if the block is too small. Increase the block's height so all names can be read at a glance. The background is translucent dark blue; calendar badges identify origin in text, with absence cards visually distinct from red clash alerts. No external scripts or fonts are loaded.
+
+Times default to Europe/London. Append `?timezone=Europe%2FLondon` (or another valid timezone) if needed. The widget deliberately ignores a `calendar` query parameter so a copied filtered data URL cannot hide the other calendars.

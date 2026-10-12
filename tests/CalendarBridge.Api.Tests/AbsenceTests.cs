@@ -148,6 +148,16 @@ public sealed class AbsenceTests
         var clashes = (await client.GetFromJsonAsync<ClashReport>("/api/v1/calendar/clashes"))!;
         Assert.Single(clashes.Clashes);
         client.DefaultRequestHeaders.Clear();
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/dakboard/absences/wrong")).StatusCode);
+        var page = await client.GetAsync("/dakboard/absences/" + key);
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.True(page.Headers.CacheControl!.NoStore);
+        Assert.False(page.Headers.Contains("X-Frame-Options"));
+        Assert.Contains("script-src 'self'", string.Join(" ", page.Headers.GetValues("Content-Security-Policy")));
+        var html = await page.Content.ReadAsStringAsync();
+        Assert.Contains("/dakboard-assets/absences.js", html);
+        Assert.DoesNotContain(TestApp.ApiKey, html); Assert.DoesNotContain(TestApp.Token, html);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/dakboard-assets/absences.js")).StatusCode);
         var widget = await client.GetAsync("/dakboard/absences/" + key + "/data?calendar=ukhsa&timezone=UTC");
         Assert.Equal(HttpStatusCode.OK, widget.StatusCode); Assert.True(widget.Headers.CacheControl!.NoStore);
         Assert.Equal(3, (await widget.Content.ReadFromJsonAsync<AbsenceReport>())!.People.Count);
