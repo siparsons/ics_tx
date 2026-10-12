@@ -56,7 +56,7 @@ export async function run(overrides = {}) {
     const capturedAt = new Date().toISOString();
     const detected = getVisibleDateRange();
     if (!(config.windowStart || detected?.windowStart) || !(config.windowEnd || detected?.windowEnd))
-      throw new Error("Cannot determine the calendar window. Open a complete month or seven-day view and try again.");
+      throw new Error("Cannot determine the calendar window. Open a complete month or dated day/week view and try again.");
     const windowStart = strictTimestamp(config.windowStart || detected.windowStart);
     const windowEnd = strictTimestamp(config.windowEnd || detected.windowEnd);
     if (Date.parse(windowEnd) <= Date.parse(windowStart) || Date.parse(windowEnd) - Date.parse(windowStart) > 366 * 86400000)

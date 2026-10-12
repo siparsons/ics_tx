@@ -177,7 +177,7 @@ export function getVisibleDateRange(root = document) {
     const count = new Set(days.map(Number)).size;
     return [28, 35, 42].includes(count) ? contiguousRange(days) : null;
   }
-  // Outlook's rolling 7-day view exposes dates on its actual header columns.
+  // Outlook day/week views expose dates on their actual header columns.
   // Never use the sidebar date-picker selection as the capture window.
   const columns = [...root.querySelectorAll('[data-app-section="Surface_Day"] [data-app-section^="calendar-view-header-"] [data-column-date]')].filter(visible);
   if (columns.length) {
@@ -185,12 +185,48 @@ export function getVisibleDateRange(root = document) {
     if (parts.some(value => !value)) return null;
     const dates = parts.map(value => localDate(value));
     const count = new Set(dates.map(Number)).size;
-    return count === 7 ? contiguousRange(dates) : null;
+    const range = contiguousRange(dates);
+    if (!range || count > 7) return null;
+    // A shorter view is complete only when its columns match the main date heading.
+    // Never infer a four-day view from four columns of a partially loaded week.
+    const headings = [...root.querySelectorAll('[data-app-section="CalendarSurfaceNavigationToolbar"] button, [data-app-section="CalendarSurfaceNavigationToolbar"] [role="button"]')]
+      .filter(visible).map(el => navigationRange(el.getAttribute("aria-label") || el.textContent || "")).filter(Boolean);
+    if (headings.length) return headings.every(h => h.windowStart === range.windowStart && h.windowEnd === range.windowEnd) ? range : null;
+    return count === 7 ? range : null;
   }
   const days = [...root.querySelectorAll('[role="columnheader"][aria-label], [role="columnheader"][data-date]')]
     .filter(visible).map(el => dateParts(el.getAttribute("data-date") || el.getAttribute("aria-label") || ""))
     .filter(Boolean).map(parts => localDate(parts));
   return contiguousRange(days);
+}
+function navigationRange(text) {
+  text = text.replace(/,?\s*Jump to a specific date(?: or date range)?\.?\s*$/i, "").trim();
+  const prefix = /^(\d{4}),\s*/.exec(text);
+  if (prefix) text = text.slice(prefix[0].length);
+  // Ignore decorative icon glyphs surrounding the button's date text.
+  text = text.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+  const pieces = text.split(/\s*[-\u2013\u2014]\s*/);
+  if (pieces.length > 2) return null;
+  const first = /^([A-Za-z]+)\s+(\d{1,2})(?:,?\s+(\d{4}))?$/.exec(pieces[0]);
+  const last = pieces.length === 1 ? first : /^(?:([A-Za-z]+)\s+)?(\d{1,2})(?:,?\s+(\d{4}))?$/.exec(pieces[1]);
+  if (!first || !last) return null;
+  const firstMonth = MONTHS.indexOf(first[1].toLowerCase()) + 1;
+  const lastMonth = last[1] ? MONTHS.indexOf(last[1].toLowerCase()) + 1 : firstMonth;
+  if (!firstMonth || !lastMonth) return null;
+  let firstYear = Number(first[3] || prefix?.[1] || last[3]);
+  let lastYear = Number(last[3] || firstYear);
+  if (!firstYear || !lastYear) return null;
+  if (lastMonth < firstMonth) {
+    if (!last[3]) lastYear++;
+    else if (!first[3] && !prefix) firstYear--;
+  }
+  try {
+    const start = localDate([firstYear, firstMonth, +first[2]]);
+    const end = localDate([lastYear, lastMonth, +last[2]]);
+    if (end < start) return null;
+    end.setDate(end.getDate() + 1);
+    return { windowStart: start.toISOString(), windowEnd: end.toISOString() };
+  } catch { return null; }
 }
 function contiguousRange(days) {
   const unique = [...new Set(days.map(Number))].sort((a, b) => a - b);

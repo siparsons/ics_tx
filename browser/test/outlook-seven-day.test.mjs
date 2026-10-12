@@ -74,3 +74,40 @@ test("Month view is left alone and ambiguous Today controls fail visibly", async
   toolbar.append(toolbar.firstElementChild.cloneNode(true));
   await assert.rejects(follow(week), /Cannot identify/);
 });
+
+function shorterView(first, count, heading) {
+  const doc = fixture(first);
+  [...doc.querySelectorAll('[data-column-date]')].slice(count).forEach(el => el.remove());
+  const title = doc.createElement("button");
+  title.setAttribute("aria-label", heading + ", Jump to a specific date or date range.");
+  doc.querySelector('[data-app-section="CalendarSurfaceNavigationToolbar"]').append(title);
+  return doc;
+}
+
+test("Complete four-day view matching the heading settles on today", async () => {
+  const doc = shorterView("2026-10-12", 4, "October 12\u201315, 2026");
+  assert.deepEqual(getVisibleDateRange(doc), {windowStart:"2026-10-11T23:00:00.000Z",windowEnd:"2026-10-15T23:00:00.000Z"});
+  const follow = createTodayFollower({now:()=>new Date("2026-10-12T10:00:00+01:00"),wait:async()=>{}});
+  await follow(doc);
+});
+
+test("Short day/week views require matching headings and preserve DST and year boundaries", () => {
+  const cases = [
+    ["2026-10-12",1,"October 12, 2026","2026-10-12T23:00:00.000Z"],
+    ["2026-10-12",5,"2026, October 12 - 16","2026-10-16T23:00:00.000Z"],
+    ["2026-10-23",4,"October 23 - 26, 2026","2026-10-27T00:00:00.000Z"],
+    ["2026-09-29",4,"2026, September 29 - October 02","2026-10-02T23:00:00.000Z"],
+    ["2026-12-30",4,"2026, December 30 - January 02","2027-01-03T00:00:00.000Z"],
+    ["2026-12-30",4,"December 30 - January 2, 2027","2027-01-03T00:00:00.000Z"]
+  ];
+  for(const [first,count,heading,end] of cases) assert.equal(getVisibleDateRange(shorterView(first,count,heading))?.windowEnd,end,heading);
+});
+
+test("Partial and stale columns cannot masquerade as a complete short view", () => {
+  for(const [count,heading] of [[4,"October 12 - 18, 2026"],[3,"October 12 - 15, 2026"],[4,"October 13 - 16, 2026"],[7,"October 12 - 15, 2026"],[4,"Unknown range"]]) {
+    assert.equal(getVisibleDateRange(shorterView("2026-10-12",count,heading)),null);
+  }
+  const doc=shorterView("2026-10-12",4,"October 12 - 15, 2026");
+  doc.querySelectorAll('[data-column-date]')[2].setAttribute('data-column-date','2026-10-19');
+  assert.equal(getVisibleDateRange(doc),null);
+});
