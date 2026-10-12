@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using CalendarBridge.Api.Configuration;
+using CalendarBridge.Api.Calendar;
 using CalendarBridge.Api.Models;
 
 namespace CalendarBridge.Api.Ics;
@@ -19,6 +20,7 @@ public static class IcsWriter
         Line("X-WR-CALNAME:" + Escape(options.CalendarName));
         foreach (var e in events)
         {
+            if (AbsenceClassifier.Match(e) is not null) continue;
             Line("BEGIN:VEVENT");
             Line("UID:" + e.Id);
             Line("DTSTAMP:" + Timestamp(e.Updated));

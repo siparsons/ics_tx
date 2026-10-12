@@ -61,8 +61,10 @@ public sealed class SpanningEventTests
         Assert.Equal(3, store.Read().Count);
         Assert.Equal(uid, store.Read().Single(e => e.Title == "Annual leave").Id);
         var feed = await client.GetStringAsync($"/calendar/{TestApp.Token}.ics");
-        Assert.Contains("DTSTART;VALUE=DATE:" + Day.AddDays(-1).ToString("yyyyMMdd"), feed);
-        Assert.Contains("DTEND;VALUE=DATE:" + Day.AddDays(8).ToString("yyyyMMdd"), feed);
+        Assert.DoesNotContain("Annual leave", feed);
+        var storedLeave = store.Read().Single(e => e.Id == uid);
+        Assert.Equal(Day.AddDays(-1).ToString("yyyyMMdd"), storedLeave.StartDate);
+        Assert.Equal(Day.AddDays(8).ToString("yyyyMMdd"), storedLeave.EndDate);
         // Rename and shorten the carry-in appointment; the old identity must disappear.
         var changed = leave with { Title = "Updated leave", End = Day.AddDays(3) };
         await Sync(Snapshot(changed));

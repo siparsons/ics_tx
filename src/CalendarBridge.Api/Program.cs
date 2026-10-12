@@ -15,6 +15,7 @@ builder.Services.AddSingleton<EnvelopeCrypto>();
 builder.Services.AddSingleton<CalendarStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IClashQuery, ClashQuery>();
+builder.Services.AddSingleton<AbsenceQuery>();
 builder.Services.AddSingleton(sp => DakboardWidgetOptions.Load(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<BridgeOptions>()));
 builder.Services.AddHostedService<RetentionWorker>();
 builder.Services.AddCors();
@@ -105,6 +106,7 @@ app.UseStaticFiles(new StaticFileOptions
 });
 app.MapBridge();
 app.MapClashes();
+app.MapAbsences();
 app.MapDakboard();
 app.Run();
 public partial class Program;

@@ -299,3 +299,7 @@ The widget key is a read-only access secret: keep the iframe URL private and rot
 ### Cancelled appointments
 
 Titles containing the whole word `cancelled` or `canceled` (case-insensitive, anywhere in the title) are excluded from ICS feeds, event counts, and clash detection before privacy redaction. The rule applies when reading existing captures, so no new Outlook sync is needed. Words such as `uncancelled` and `cancellation` are not matched. Raw captures remain stored; a later capture with the cancellation wording removed makes the appointment eligible again. DAKboard calendar blocks reflect feed removals on their next calendar refresh.
+
+### Absence entries
+
+Recognised named leave/OOO entries are excluded from the main ICS feeds and clashes, while their raw captures remain stored. The authenticated `GET /api/v1/calendar/absences?calendar=ukhsa` endpoint returns people away now, later today or tomorrow, plus expected returns within seven days when captured coverage supports them. A read-only widget-key route is also available at `/dakboard/absences/{widgetKey}/data?calendar=ukhsa`. See [the absence API reference](docs/absences-api.md) for matching rules, partial days, freshness, return-date limitations and component integration.

@@ -1,0 +1,58 @@
+# Absence API
+
+Separates named absence entries from ordinary appointments using already captured calendars. No new Favourite or Outlook permissions are needed. This is a JSON API for a future web component, not an HTML widget.
+
+## Routes and authentication
+
+- `GET /api/v1/calendar/absences?calendar=ukhsa` — send the read-only feed token as `X-Calendar-Token`, or the existing upload key as `X-API-Key`. Unauthorized requests return 401.
+- `GET /dakboard/absences/{widgetKey}/data?calendar=ukhsa` — uses the same independent `DAKBOARD_WIDGET_KEY` as the clash widget; wrong/disabled keys return 404. This URL contains a read secret and must remain private.
+
+Both support optional `calendar` (omit for all named calendars) and `timezone` (default `Europe/London`). Unknown/duplicate parameters, invalid calendar names and unknown timezones return 400. A report exceeding 10,000 candidate events returns 422 with no partial data. Busy privacy mode returns 403 rather than disclosing names. All responses use `Cache-Control: no-store`. Existing CORS restrictions remain in place: an external browser component needs an allowed origin or its own backend. A same-origin widget can fetch its data directly.
+
+## Response
+
+```json
+{
+  "generatedAt": "2026-10-12T09:00:00+00:00",
+  "timezone": "Europe/London",
+  "today": "2026-10-12",
+  "tomorrow": "2026-10-13",
+  "people": [{
+    "calendarName": "ukhsa",
+    "name": "Ann-Marie",
+    "outNow": true,
+    "outToday": true,
+    "outTomorrow": false,
+    "expectedReturn": "2026-10-13T00:00:00+01:00",
+    "returningInDays": 1,
+    "returnStatus": "expected",
+    "periods": [{
+      "start": "2026-10-07T00:00:00+01:00",
+      "end": "2026-10-13T00:00:00+01:00",
+      "allDay": true,
+      "evidence": "annual leave",
+      "fuzzy": false
+    }]
+  }],
+  "unnamedAbsenceCount": 0,
+  "calendars": []
+}
+```
+
+`calendars` contains the usual capture metadata (shown empty above for brevity): name, eventCount, lastCapturedAt, lastImportedAt, windowStart and windowEnd. Counts remain totals of stored non-cancelled entries, including absence entries. Display capture freshness alongside the names; an old Outlook capture can still contain changed/cancelled leave. The API cannot independently confirm attendance or return dates.
+
+`people` includes anyone with a remaining absence today or any absence tomorrow. Ended absences disappear; a morning-only absence never becomes an all-day absence. `outToday` means an absence still ongoing or starting later today, while `outNow` means currently within a recorded interval. Use `periods` for partial-day times and tomorrow's intervals. Names are grouped only within the same named calendar, ignoring case and normalizing punctuation/spacing; similar spellings are not guessed to be the same colleague.
+
+`expectedReturn` and `returningInDays` describe the end of the earliest remaining continuous absence. Overlapping or directly adjacent entries for that person are joined when calculating it. Separate later absences do not extend it. Dates use the requested timezone, with exclusive all-day end dates and daylight saving respected. Midnight on an all-day return is a **return date**, not a claim that work starts at midnight. A timed absence ending today may be labelled “Expected back today at 12:00”; 1 day “Expected back tomorrow”; 2–7 days “Expected back in X days”. These are calendar-day differences, not business days; no weekend/work-pattern assumptions are made.
+
+Return estimates require the latest captured window to cover the relevant interval and extend past its end. `returnStatus` is `expected`, `insufficient-coverage`, or `beyond-seven-days`. The latter two return null dates/countdowns: render “Return not yet known” or omit the return text. Do not treat the last visible day as proof of a return. Consecutive future leave beyond today/tomorrow is used to calculate the return but is not listed as a separate upcoming person.
+
+`unnamedAbsenceCount` counts clear absence-only subjects such as “OOO” that have no usable person name; no identity is invented. The response omits original subjects, destinations and locations. Evidence strings describe the recognised absence wording, and `fuzzy` marks an approximate match.
+
+## Detection and main calendar behaviour
+
+Recognises named OOO/O.O.O./OOF, out-of-office, annual/parental/sick/compassionate and other leave, PTO and non-working days. Weaker wording (holiday, vacation, leave, training, AL) also requires an all-day entry or at least four hours. A one-character insertion/deletion/substitution in a longer absence phrase is accepted with that same duration evidence. Short acronyms are never fuzzy-matched. Names can precede or follow the absence phrase, including hyphenated names and possessives; trailing destinations/durations are not names.
+
+Meeting discussion words (planning, policy, review, approval, handover, etc.) prevent removal. “Team Away Day”, ordinary meetings, working from home and short training meetings remain in the main ICS feed. This is a conservative heuristic, not perfect semantic recognition: ambiguous subjects remain appointments. Cancelled entries are excluded as before.
+
+The same classifier filters recognized absences from every main ICS calendar and from clashes, before title privacy redaction. Raw entries remain stored for this endpoint and can be reclassified by later rule changes. DAKboard sees ICS removals at its next calendar-feed refresh; the bridge cannot push a refresh into its calendar block. A component can poll this endpoint every 60 seconds to update names and return labels independently.
