@@ -9,7 +9,7 @@ h1{font-size:1.2em;font-weight:650;letter-spacing:.015em;margin:0}
 h2{display:flex;align-items:center;gap:.6em;font-size:.65em;text-transform:uppercase;letter-spacing:.12em;color:#c3d2dd;font-weight:600;margin:0 0 9px}
 h2 span{font-variant-numeric:tabular-nums;background:#ffffff13;border-radius:20px;padding:2px 7px;color:#e3eff4;letter-spacing:0}
 section+section{margin-top:18px}
-.people{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:10px}
+.people{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
 .person{min-width:0;padding:12px 14px;border:1px solid #ffffff1c;border-left:3px solid #83d4c2;border-radius:7px;background:#ffffff09}
 .identity{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .name{font-size:1em;line-height:1.2;font-weight:650;margin:0;overflow-wrap:anywhere}
