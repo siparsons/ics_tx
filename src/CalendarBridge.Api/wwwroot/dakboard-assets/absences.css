@@ -2,27 +2,27 @@
 html,body{margin:0;width:100%;min-height:100%;background:transparent}
 body{font-family:"Segoe UI",Arial,sans-serif;color:#fff;-webkit-font-smoothing:antialiased}
 [hidden]{display:none!important}
-#widget{margin:4px;padding:18px 20px;border:1px solid #c5e7e32e;border-radius:12px;background:linear-gradient(120deg,#132b38eb,#192636eb);box-shadow:0 4px 20px #0002;font-size:clamp(20px,2.6vw,28px)}
-.heading{display:flex;align-items:baseline;justify-content:space-between;gap:1em;margin-bottom:14px}
-h1{font-size:1.2em;font-weight:650;letter-spacing:.015em;margin:0}
-#scope{color:#b5c9d3;font-size:.62em;text-align:right}
-h2{display:flex;align-items:center;gap:.6em;font-size:.65em;text-transform:uppercase;letter-spacing:.12em;color:#c3d2dd;font-weight:600;margin:0 0 9px}
-h2 span{font-variant-numeric:tabular-nums;background:#ffffff13;border-radius:20px;padding:2px 7px;color:#e3eff4;letter-spacing:0}
-section+section{margin-top:18px}
-.people{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.person{min-width:0;padding:12px 14px;border:1px solid #ffffff1c;border-left:3px solid #83d4c2;border-radius:7px;background:#ffffff09}
-.identity{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.name{font-size:1em;line-height:1.2;font-weight:650;margin:0;overflow-wrap:anywhere}
-.calendar{font-size:.58em;font-weight:700;letter-spacing:.06em;line-height:1.2;max-width:50%;overflow-wrap:anywhere;padding:4px 6px;border-radius:4px;background:#87d7c623;color:#b8f1e2;flex-shrink:0}
-.calendar[data-calendar="ons"]{color:#e0d3ff;background:#b596ff25}
-.state{font-size:.72em;line-height:1.35;color:#a9ddce;margin:8px 0 0}
-.return{font-size:.72em;line-height:1.35;color:#e3eaf0;margin:4px 0 0}
-.also{font-size:.58em;color:#aebfcd;margin:5px 0 0}
-#tomorrow-panel .person{border-left-color:#96aec6;background:#ffffff05}
-#tomorrow-panel .state{color:#becdd9}
-footer{margin-top:12px;font-size:.52em;line-height:1.5;color:#9cafbd}
-footer p{margin:3px 0 0;overflow-wrap:anywhere}
-#notice,#unassigned{color:#f3d79e}
-#notice{font-size:.68em;margin:0 0 12px;line-height:1.4}
-#empty{font-size:.8em;color:#c5d4de;margin:20px 0}
-@media(max-width:400px){#widget{padding:13px}#scope{font-size:.6em}.person{padding:11px}.people{gap:8px}}
+#widget{margin:0;padding:4px;background:transparent;font-size:clamp(32px,5vw,42px)}
+/* Keep the page heading accessible without using dashboard space. */
+.heading{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+h1{margin:0}
+h2{display:flex;align-items:center;gap:.6em;font-size:.7em;text-transform:uppercase;letter-spacing:.06em;color:#fff;font-weight:650;margin:0 0 10px;text-shadow:0 2px 5px #000,0 0 12px #0008}
+h2 span{font-variant-numeric:tabular-nums;font-size:.85em;letter-spacing:0}
+section+section{margin-top:20px}
+.people{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.person{min-width:0;padding:15px 17px;border:1px solid #ffffff38;border-left:4px solid #a5e4c4;border-radius:7px;background:rgba(18,26,28,.76);box-shadow:0 2px 8px #0002}
+.identity{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px}
+.name{flex:1 1 170px;font-size:1em;line-height:1.15;font-weight:700;margin:0;overflow-wrap:anywhere}
+.calendar{font-size:.66em;font-weight:700;letter-spacing:.035em;line-height:1.2;max-width:100%;overflow-wrap:anywhere;padding:4px 7px;border-radius:4px;background:#a5e4c428;color:#deffec;flex-shrink:0}
+.calendar[data-calendar="ons"]{color:#eee6ff;background:#b596ff30}
+.state{font-size:.78em;line-height:1.25;color:#dcf5e7;margin:10px 0 0}
+.return{font-size:.78em;line-height:1.25;color:#fff;margin:6px 0 0}
+.also{font-size:.68em;color:#e0e7ec;margin:6px 0 0}
+#tomorrow-panel .person{border-left-color:#c4d4e4}
+#tomorrow-panel .state{color:#e3ebf4}
+footer{margin-top:12px;font-size:16px;line-height:1.4;color:#fff;text-shadow:0 1px 4px #000,0 0 8px #000}
+footer p{margin:4px 0 0;overflow-wrap:anywhere}
+#notice,#unassigned{color:#ffe5b4}
+#notice{font-size:.7em;margin:0 0 12px;line-height:1.3;text-shadow:0 1px 4px #000}
+#empty{font-size:.78em;color:#fff;margin:15px 0;text-shadow:0 1px 4px #000}
+@media(max-width:300px){.person{padding:12px}.identity{gap:7px}.name{flex-basis:100%}}
