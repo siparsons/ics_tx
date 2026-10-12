@@ -20,6 +20,10 @@ public sealed class AbsenceTests
     [InlineData("Ann-Marie Annual Leave - France", "Ann-Marie", false)]
     [InlineData("Tom S OOO - 2 Days", "Tom S", false)]
     [InlineData("Eugenia OOO", "Eugenia", false)]
+    [InlineData("Jason Hols", "Jason", false)]
+    [InlineData("Jason HOLS", "Jason", false)]
+    [InlineData("Jason on hols", "Jason", false)]
+    [InlineData("Hols - Jason", "Jason", false)]
     [InlineData("Amy out-of-office", "Amy", false)]
     [InlineData("Amy O.O.O.", "Amy", false)]
     [InlineData("Annual leave - Ann-Marie", "Ann-Marie", false)]
@@ -56,11 +60,17 @@ public sealed class AbsenceTests
     [InlineData("Office planning")]
     [InlineData("Amy WFH")]
     [InlineData("Holiday planning")]
+    [InlineData("Jason hols planning")]
+    [InlineData("Cancelled: Jason Hols")]
+    [InlineData("Jason holds")]
+    [InlineData("Jason holes")]
+    [InlineData("Jason Nichols")]
     public void KeepsMeetingsAndWorkingFromHome(string title) => Assert.Null(AbsenceClassifier.Match(Event(title)));
 
     [Fact] public void ShortAbsenceRequiresStrongWording()
     {
         Assert.NotNull(AbsenceClassifier.Match(Event("Eugenia OOO", false, Now, Now.AddHours(3))));
+        Assert.Equal("Jason", AbsenceClassifier.Match(Event("Jason Hols", false, Now, Now.AddHours(2)))?.Name);
         Assert.Null(AbsenceClassifier.Match(Event("Eugenia Training", false, Now, Now.AddHours(1))));
         Assert.Null(AbsenceClassifier.Match(Event("Eugenia anual leave", false, Now, Now.AddHours(1))));
     }
@@ -135,16 +145,17 @@ public sealed class AbsenceTests
         var day = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         CalendarEvent E(string title) => new(null, title, day, day.AddDays(1), "", true);
         CalendarSnapshot S(string name, params CalendarEvent[] events) => new(1, SnapshotValidator.Source, now, day, day.AddDays(8), "UTC", events.ToList(), name);
-        store.Replace(S("ukhsa", E("Ann-Marie Annual Leave - France"), E("Tom S OOO - 2 Days"), E("Eugenia OOO"), E("Team planning")));
+        store.Replace(S("ukhsa", E("Ann-Marie Annual Leave - France"), E("Tom S OOO - 2 Days"), E("Eugenia OOO"), E("Jason Hols"), E("Team planning")));
         store.Replace(S("ons", E("ONS briefing")));
         var feed = await client.GetStringAsync("/calendar/" + TestApp.Token + ".ics?calendar=ukhsa");
         Assert.Contains("Team planning", feed); Assert.DoesNotContain("Ann-Marie", feed); Assert.DoesNotContain("OOO", feed);
-        Assert.Equal(4, store.Read("ukhsa").Count);
+        Assert.DoesNotContain("Jason Hols", feed);
+        Assert.Equal(5, store.Read("ukhsa").Count);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/calendar/absences")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/dakboard/absences/wrong/data")).StatusCode);
         client.DefaultRequestHeaders.Add("X-Calendar-Token", TestApp.Token);
         var report = (await client.GetFromJsonAsync<AbsenceReport>("/api/v1/calendar/absences?calendar=ukhsa&timezone=UTC"))!;
-        Assert.Equal(3, report.People.Count); Assert.All(report.People, p => Assert.Equal(1, p.ReturningInDays));
+        Assert.Equal(4, report.People.Count); Assert.Contains(report.People, p => p.Name == "Jason"); Assert.All(report.People, p => Assert.Equal(1, p.ReturningInDays));
         var clashes = (await client.GetFromJsonAsync<ClashReport>("/api/v1/calendar/clashes"))!;
         Assert.Single(clashes.Clashes);
         client.DefaultRequestHeaders.Clear();
@@ -160,7 +171,7 @@ public sealed class AbsenceTests
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/dakboard-assets/absences.js")).StatusCode);
         var widget = await client.GetAsync("/dakboard/absences/" + key + "/data?calendar=ukhsa&timezone=UTC");
         Assert.Equal(HttpStatusCode.OK, widget.StatusCode); Assert.True(widget.Headers.CacheControl!.NoStore);
-        Assert.Equal(3, (await widget.Content.ReadFromJsonAsync<AbsenceReport>())!.People.Count);
+        Assert.Equal(4, (await widget.Content.ReadFromJsonAsync<AbsenceReport>())!.People.Count);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/dakboard/absences/" + key + "/data?timezone=invalid")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/dakboard/absences/" + key + "/data?calendar=ukhsa&calendar=ons")).StatusCode);
     }

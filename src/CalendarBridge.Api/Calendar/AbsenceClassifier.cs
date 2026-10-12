@@ -8,7 +8,7 @@ public sealed record AbsenceMatch(string? Name, string Evidence, bool Fuzzy);
 public static class AbsenceClassifier
 {
     private static readonly Regex Words = new(@"[\p{L}]+(?:['\u2019-][\p{L}]+)*", RegexOptions.CultureInvariant);
-    private static readonly string[] Strong = ["out of the office", "out of office", "ooo", "oof", "day off", "non working day", "annual leave", "on leave", "on holiday", "on vacation", "sick leave", "sickness absence", "maternity leave", "paternity leave", "parental leave", "compassionate leave", "bereavement leave", "unpaid leave", "study leave", "pto"];
+    private static readonly string[] Strong = ["out of the office", "out of office", "ooo", "oof", "day off", "non working day", "annual leave", "on leave", "on holiday", "on vacation", "hols", "sick leave", "sickness absence", "maternity leave", "paternity leave", "parental leave", "compassionate leave", "bereavement leave", "unpaid leave", "study leave", "pto"];
     private static readonly string[] Contextual = ["holiday", "vacation", "leave", "absent", "off sick", "training", "al"];
     // A subject discussing absence is still a meeting, not an absence notification.
     private static readonly HashSet<string> MeetingWords = new(["meeting", "review", "planning", "plan", "policy", "request", "requests", "approval", "approvals", "handover", "cover", "coverage", "rota", "team", "workshop", "standup", "stand", "catch", "discussion", "discuss", "return", "back", "cancelled", "canceled", "not", "no", "office", "day", "days", "management"], StringComparer.OrdinalIgnoreCase);
@@ -32,7 +32,8 @@ public static class AbsenceClassifier
             var parts = phrase.Split(' ');
             var contextual = Contextual.Contains(phrase);
             if ((contextual || fuzzy) && !substantial) continue;
-            if (fuzzy && parts.Any(p => p.Length < 4)) continue;
+            // Short holiday shorthand must be exact: "holds" and "holes" are not absences.
+            if (fuzzy && (phrase == "hols" || parts.Any(p => p.Length < 4))) continue;
             for (var i = 0; i <= tokens.Length - parts.Length; i++)
             {
                 var differences = 0;
