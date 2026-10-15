@@ -19,6 +19,8 @@ public static class AbsenceClassifier
         var title = Regex.Replace(e.Title, @"\bO\s*\.\s*O\s*\.\s*O\.?", "OOO", RegexOptions.IgnoreCase);
         title = Regex.Replace(title, @"\bout[-\s]+of[-\s]+office\b", "out of office", RegexOptions.IgnoreCase);
         title = Regex.Replace(title, @"\bnon-working\b", "non working", RegexOptions.IgnoreCase);
+        // Outlook subjects also use slash-separated annual-leave shorthand.
+        title = Regex.Replace(title, @"(?<![\p{L}\p{N}/])a\s*/\s*l(?![\p{L}\p{N}/])", "annual leave", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var tokens = Words.Matches(title).Cast<Match>().ToArray();
         var lower = tokens.Select(t => t.Value.ToLowerInvariant()).ToArray();
         var substantial = e.AllDay || e.End - e.Start >= TimeSpan.FromHours(4);
